@@ -71,6 +71,7 @@ indices to perform a k-fold NNDM CV for map validation.</p>
 <span>  space <span class="op">=</span> <span class="st">"geographical"</span>,</span>
 <span>  k <span class="op">=</span> <span class="fl">10</span>,</span>
 <span>  maxp <span class="op">=</span> <span class="fl">0.5</span>,</span>
+<span>  prop_test <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  clustering <span class="op">=</span> <span class="st">"hierarchical"</span>,</span>
 <span>  linkf <span class="op">=</span> <span class="st">"ward.D2"</span>,</span>
 <span>  samplesize <span class="op">=</span> <span class="fl">1000</span>,</span>
@@ -103,6 +104,11 @@ indices to perform a k-fold NNDM CV for map validation.</p>
 
 <dt>maxp</dt>
 <dd><p>numeric. Maximum fold size allowed, defaults to 0.5, i.e. a single fold can hold a maximum of half of the training points.</p></dd>
+
+
+<dt>prop_test</dt>
+<dd><p>numeric. The proportion of data that should be assigned to the test set (train/test split).
+By default NULL, resulting in k-fold Cross-Validation instead of train/test split.</p></dd>
 
 
 <dt>clustering</dt>
@@ -214,7 +220,7 @@ features are present, and `clustering` = "kmeans", K-Prototype clustering will b
 <span class="r-plt img"><img src="knndm-1.png" alt="" width="700" height="433"></span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># Run kNNDM for the whole domain, here the prediction points are known.</span></span></span>
-<span class="r-in"><span><span class="va">knndm_folds</span> <span class="op">&lt;-</span> <span class="fu">knndm</span><span class="op">(</span><span class="va">train_points</span>, predpoints <span class="op">=</span> <span class="va">pred_points</span>, k <span class="op">=</span> <span class="fl">5</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="va">knndm_folds</span> <span class="op">&lt;-</span> <span class="fu">knndm</span><span class="op">(</span><span class="va">train_points</span>, predpoints <span class="op">=</span> <span class="va">pred_points</span>, k <span class="op">=</span> <span class="fl">10</span><span class="op">)</span></span></span>
 <span class="r-wrn co"><span class="r-pr">#&gt;</span> <span class="warning">Warning: </span>Missing CRS in training or prediction points. Assuming projected CRS.</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> Gij &lt;= Gj; a random CV assignment is returned</span>
 <span class="r-in"><span><span class="va">knndm_folds</span></span></span>
@@ -222,9 +228,9 @@ features are present, and `clustering` = "kmeans", K-Prototype clustering will b
 <span class="r-out co"><span class="r-pr">#&gt;</span> Space: geographical</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Clustering algorithm: hierarchical</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Intermediate clusters (q): random CV</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> W statistic: 0.1338</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> Number of folds: 5</span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> Observations in each fold:  200 200 200 200 200 </span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> W statistic: 0.0474</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> Number of folds: 10</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> Observations in each fold:  100 100 100 100 100 100 100 100 100 100 </span>
 <span class="r-in"><span><span class="fu"><a href="plot.html">plot</a></span><span class="op">(</span><span class="va">knndm_folds</span><span class="op">)</span></span></span>
 <span class="r-plt img"><img src="knndm-2.png" alt="" width="700" height="433"></span>
 <span class="r-in"><span><span class="fu"><a href="plot.html">plot</a></span><span class="op">(</span><span class="va">knndm_folds</span>, type <span class="op">=</span> <span class="st">"simple"</span><span class="op">)</span> <span class="co"># For more accessible legend labels</span></span></span>
@@ -255,7 +261,11 @@ features are present, and `clustering` = "kmeans", K-Prototype clustering will b
 <span class="r-in"><span><span class="fu"><a href="plot.html">plot</a></span><span class="op">(</span><span class="va">train_points</span>, add <span class="op">=</span> <span class="cn">TRUE</span>, col <span class="op">=</span> <span class="st">"red"</span><span class="op">)</span></span></span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># Run kNNDM for the whole domain, here the prediction points are known.</span></span></span>
-<span class="r-in"><span><span class="va">knndm_folds</span> <span class="op">&lt;-</span> <span class="fu">knndm</span><span class="op">(</span><span class="va">train_points</span>, predpoints <span class="op">=</span> <span class="va">pred_points</span>, k <span class="op">=</span> <span class="fl">5</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="co"># Firstly split in train/test</span></span></span>
+<span class="r-in"><span><span class="va">knndm_test</span> <span class="op">&lt;-</span> <span class="fu">knndm</span><span class="op">(</span><span class="va">train_points</span>, predpoints <span class="op">=</span> <span class="va">pred_points</span>, k <span class="op">=</span> <span class="fl">2</span>, prop_test<span class="op">=</span><span class="fl">0.2</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="co"># Then, split train data into CV folds</span></span></span>
+<span class="r-in"><span><span class="va">train_points_split</span> <span class="op">&lt;-</span> <span class="va">train_points</span><span class="op">[</span><span class="va">knndm_test</span><span class="op">$</span><span class="va">clusters</span> <span class="op">==</span> <span class="fl">1</span>,<span class="op">]</span></span></span>
+<span class="r-in"><span><span class="va">knndm_folds</span> <span class="op">&lt;-</span> <span class="fu">knndm</span><span class="op">(</span><span class="va">train_points_split</span>, predpoints <span class="op">=</span> <span class="va">pred_points</span>, k <span class="op">=</span> <span class="fl">10</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="va">knndm_folds</span></span></span>
 <span class="r-in"><span><span class="fu"><a href="plot.html">plot</a></span><span class="op">(</span><span class="va">knndm_folds</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="fu"><a href="plot.html">plot</a></span><span class="op">(</span><span class="va">knndm_folds</span>, type <span class="op">=</span> <span class="st">"simple"</span><span class="op">)</span> <span class="co"># For more accessible legend labels</span></span></span>
@@ -263,7 +273,8 @@ features are present, and `clustering` = "kmeans", K-Prototype clustering will b
 <span class="r-in"><span><span class="va">folds</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/character.html" class="external-link">as.character</a></span><span class="op">(</span><span class="va">knndm_folds</span><span class="op">$</span><span class="va">clusters</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggplot.html" class="external-link">ggplot</a></span><span class="op">(</span><span class="op">)</span> <span class="op">+</span></span></span>
 <span class="r-in"><span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggsf.html" class="external-link">geom_sf</a></span><span class="op">(</span>data <span class="op">=</span> <span class="va">simarea</span>, alpha <span class="op">=</span> <span class="fl">0</span><span class="op">)</span> <span class="op">+</span></span></span>
-<span class="r-in"><span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggsf.html" class="external-link">geom_sf</a></span><span class="op">(</span>data <span class="op">=</span> <span class="va">train_points</span>, <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/aes.html" class="external-link">aes</a></span><span class="op">(</span>col <span class="op">=</span> <span class="va">folds</span><span class="op">)</span><span class="op">)</span></span></span>
+<span class="r-in"><span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggsf.html" class="external-link">geom_sf</a></span><span class="op">(</span>data <span class="op">=</span> <span class="va">train_points_split</span>, <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/aes.html" class="external-link">aes</a></span><span class="op">(</span>col <span class="op">=</span> <span class="va">folds</span><span class="op">)</span><span class="op">)</span> <span class="op">+</span></span></span>
+<span class="r-in"><span>  <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/ggsf.html" class="external-link">geom_sf</a></span><span class="op">(</span>data <span class="op">=</span> <span class="va">train_points</span><span class="op">[</span><span class="va">knndm_test</span><span class="op">$</span><span class="va">cluster</span> <span class="op">==</span> <span class="fl">2</span>,<span class="op">]</span>, colour<span class="op">=</span><span class="st">"black"</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="op">}</span></span></span>
 <span class="r-in"><span><span class="co">########################################################################</span></span></span>
 <span class="r-in"><span><span class="co"># Example 3: Real- world example; using a modeldomain instead of previously</span></span></span>
@@ -328,7 +339,7 @@ features are present, and `clustering` = "kmeans", K-Prototype clustering will b
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="va">knndm_folds</span> <span class="op">&lt;-</span> <span class="fu">knndm</span><span class="op">(</span><span class="va">trainDat</span><span class="op">[</span>,<span class="va">predictors</span><span class="op">]</span>, modeldomain <span class="op">=</span> <span class="va">predictors_sp</span>, space <span class="op">=</span> <span class="st">"feature"</span>,</span></span>
 <span class="r-in"><span>                    clustering<span class="op">=</span><span class="st">"kmeans"</span>, k<span class="op">=</span><span class="fl">4</span>, maxp<span class="op">=</span><span class="fl">0.8</span><span class="op">)</span></span></span>
-<span class="r-in"><span><span class="fu"><a href="plot.html">plot</a></span><span class="op">(</span><span class="va">knndm_folds</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="fu"><a href="plot.html">plot</a></span><span class="op">(</span><span class="va">knndm_folds</span>, type<span class="op">=</span><span class="st">"simple"</span><span class="op">)</span></span></span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="op">}</span></span></span>
 </code></pre></div>
