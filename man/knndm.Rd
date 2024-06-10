@@ -11,6 +11,7 @@ knndm(
   space = "geographical",
   k = 10,
   maxp = 0.5,
+  prop_test = NULL,
   clustering = "hierarchical",
   linkf = "ward.D2",
   samplesize = 1000,
@@ -30,6 +31,9 @@ knndm(
 \item{k}{integer. Number of folds desired for CV. Defaults to 10.}
 
 \item{maxp}{numeric. Maximum fold size allowed, defaults to 0.5, i.e. a single fold can hold a maximum of half of the training points.}
+
+\item{prop_test}{numeric. The proportion of data that should be assigned to the test set (train/test split).
+By default NULL, resulting in k-fold Cross-Validation instead of train/test split.}
 
 \item{clustering}{character. Possible values include "hierarchical" and "kmeans". See details.}
 
@@ -119,7 +123,7 @@ plot(pred_points, add = TRUE, col = "blue")
 plot(train_points, add = TRUE, col = "red")
 
 # Run kNNDM for the whole domain, here the prediction points are known.
-knndm_folds <- knndm(train_points, predpoints = pred_points, k = 5)
+knndm_folds <- knndm(train_points, predpoints = pred_points, k = 10)
 knndm_folds
 plot(knndm_folds)
 plot(knndm_folds, type = "simple") # For more accessible legend labels
@@ -147,7 +151,11 @@ plot(pred_points, add = TRUE, col = "blue")
 plot(train_points, add = TRUE, col = "red")
 
 # Run kNNDM for the whole domain, here the prediction points are known.
-knndm_folds <- knndm(train_points, predpoints = pred_points, k = 5)
+# Firstly split in train/test
+knndm_test <- knndm(train_points, predpoints = pred_points, k = 2, prop_test=0.2)
+# Then, split train data into CV folds
+train_points_split <- train_points[knndm_test$clusters == 1,]
+knndm_folds <- knndm(train_points_split, predpoints = pred_points, k = 10)
 knndm_folds
 plot(knndm_folds)
 plot(knndm_folds, type = "simple") # For more accessible legend labels
@@ -155,7 +163,8 @@ plot(knndm_folds, type = "simple", stat = "density") # To visualize densities ra
 folds <- as.character(knndm_folds$clusters)
 ggplot() +
   geom_sf(data = simarea, alpha = 0) +
-  geom_sf(data = train_points, aes(col = folds))
+  geom_sf(data = train_points_split, aes(col = folds)) +
+  geom_sf(data = train_points[knndm_test$cluster == 2,], colour="black")
 }
 ########################################################################
 # Example 3: Real- world example; using a modeldomain instead of previously
@@ -220,7 +229,7 @@ terra::plot(vect(splotdata), add = T)
 
 knndm_folds <- knndm(trainDat[,predictors], modeldomain = predictors_sp, space = "feature",
                     clustering="kmeans", k=4, maxp=0.8)
-plot(knndm_folds)
+plot(knndm_folds, type="simple")
 
 }
 }
