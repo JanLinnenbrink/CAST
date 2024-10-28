@@ -9,6 +9,8 @@
 #' @param predpoints sf or sfc point object, or data.frame if space = "feature". Contains the target prediction points. Optional; alternative to modeldomain (see Details).
 #' @param space character. Either "geographical" or "feature".
 #' @param k integer. Number of folds desired for CV. Defaults to 10.
+#' @param prop_test numeric. The proportion of data that should be assigned to the test set (train/test split).
+#' By default NULL, resulting in k-fold Cross-Validation instead of train/test split.
 #' @param maxp numeric. Maximum fold size allowed, defaults to 0.5, i.e. a single fold can hold a maximum of half of the training points.
 #' @param clustering character. Possible values include "hierarchical" and "kmeans". See details.
 #' @param linkf character. Only relevant if clustering = "hierarchical". Link function for agglomerative hierarchical clustering.
@@ -19,7 +21,6 @@
 #' Only required if modeldomain is used instead of predpoints.
 #' @param useMD boolean. Only for `space`=feature: shall the Mahalanobis distance be calculated instead of Euclidean?
 #' Only works with numerical variables.
-#'
 #' @return An object of class \emph{knndm} consisting of a list of eight elements:
 #' indx_train, indx_test (indices of the observations to use as
 #' training/test data in each kNNDM CV iteration), Gij (distances for
@@ -97,7 +98,11 @@
 #' plot(train_points, add = TRUE, col = "red")
 #'
 #' # Run kNNDM for the whole domain, here the prediction points are known.
-#' knndm_folds <- knndm(train_points, predpoints = pred_points, k = 5)
+#' # Firstly split in train/test
+#' knndm_test <- knndm(train_points, predpoints = pred_points, k = 2, prop_test=0.3)
+#' # Then, split train data into CV folds
+#' train_points_split <- train_points[knndm_test$clusters == 1,]
+#' knndm_folds <- knndm(train_points_split, predpoints = pred_points, k = 10)
 #' knndm_folds
 #' plot(knndm_folds)
 #' plot(knndm_folds, type = "simple") # For more accessible legend labels
@@ -105,7 +110,8 @@
 #' folds <- as.character(knndm_folds$clusters)
 #' ggplot() +
 #'   geom_sf(data = simarea, alpha = 0) +
-#'   geom_sf(data = train_points, aes(col = folds))
+#'   geom_sf(data = train_points_split, aes(col = folds)) +
+#'   geom_sf(data = train_points[knndm_test$cluster == 2,], colour="black")
 #'
 #' ########################################################################
 #' # Example 2: Simulated data - Clustered training points
@@ -125,15 +131,21 @@
 #' plot(train_points, add = TRUE, col = "red")
 #'
 #' # Run kNNDM for the whole domain, here the prediction points are known.
-#' knndm_folds <- knndm(train_points, predpoints = pred_points, k = 5)
+#' # Firstly split in train/test
+#' knndm_test <- knndm(train_points, predpoints = pred_points, k = 2, prop_test=0.3)
+#' # Then, split train data into CV folds
+#' train_points_split <- train_points[knndm_test$clusters == 1,]
+#' knndm_folds <- knndm(train_points_split, predpoints = pred_points, k = 10)
 #' knndm_folds
+#' plot(knndm_test)
 #' plot(knndm_folds)
 #' plot(knndm_folds, type = "simple") # For more accessible legend labels
 #' plot(knndm_folds, type = "simple", stat = "density") # To visualize densities rather than ECDFs
 #' folds <- as.character(knndm_folds$clusters)
 #' ggplot() +
 #'   geom_sf(data = simarea, alpha = 0) +
-#'   geom_sf(data = train_points, aes(col = folds))
+#'   geom_sf(data = train_points_split, aes(col = folds)) +
+#'   geom_sf(data = train_points[knndm_test$cluster == 2,], colour="black")
 #'}
 #' ########################################################################
 #' # Example 3: Real- world example; using a modeldomain instead of previously
@@ -198,14 +210,52 @@
 #'
 #'knndm_folds <- knndm(trainDat[,predictors], modeldomain = predictors_sp, space = "feature",
 #'                     clustering="kmeans", k=4, maxp=0.8)
-#'plot(knndm_folds)
+#'plot(knndm_folds, type="simple")
+#'
+#'#' ########################################################################
+#' # Example 5: Real- world example; kNNDM in feature and geographical space
+#' ########################################################################
+#' \dontrun{
+#' library(sf)
+#' library(terra)
+#' library(ggplot2)
+#'
+#'data(splotdata)
+#'splotdata <- splotdata[splotdata$Country == "Chile",]
+#'
+#'predictors <- c("bio_1", "bio_4", "bio_5", "bio_6",
+#'                "bio_8", "bio_9", "bio_12", "bio_13",
+#'                "bio_14", "bio_15", "elev")
+#'
+#'trainDat <- splotdata
+#'predictors_sp <- terra::rast(system.file("extdata", "predictors_chile.tif",package="CAST"))
+#'
+#'
+#' terra::plot(predictors_sp[["bio_1"]])
+#' terra::plot(vect(splotdata), add = T)
+#'
+#'knndm_folds <- knndm(trainDat[,predictors], modeldomain = predictors_sp, space = "feature_geo"
+#'                     clustering="hierarchical", k=4, maxp=0.8)
+#'plot(knndm_folds, type="simple")
 #'
 #'}
 knndm <- function(tpoints, modeldomain = NULL, predpoints = NULL,
                   space = "geographical",
-                  k = 10, maxp = 0.5,
+                  k = 10, maxp = 0.5, prop_test=NULL,
                   clustering = "hierarchical", linkf = "ward.D2",
-                  samplesize = 1000, sampling = "regular", useMD=FALSE){
+                  samplesize = 1000, sampling = "regular", useMD=FALSE,
+                  lambda = 1){
+
+
+
+  tpoints=trainDat[,predictors]
+  predpoints = NULL
+  modeldomain = predictors_sp
+  space = "feature_geo"
+  k = 10; maxp = 0.5; prop_test=NULL;
+  clustering = "hierarchical"; linkf = "ward.D2";
+  samplesize = 1000; sampling = "regular"; useMD=FALSE
+  lambda=1
 
   # create sample points from modeldomain
   if(is.null(predpoints)&!is.null(modeldomain)){
@@ -219,7 +269,7 @@ knndm <- function(tpoints, modeldomain = NULL, predpoints = NULL,
     if(any(class(modeldomain) == "SpatRaster")){
 
       # save predictor stack for extraction if space = "feature"
-      if(space == "feature") {
+      if(space == "feature" | space=="feature_geo") {
         predictor_stack <- modeldomain
       }
       modeldomain[!is.na(modeldomain)] <- 1
@@ -252,9 +302,13 @@ knndm <- function(tpoints, modeldomain = NULL, predpoints = NULL,
     if(space == "feature") {
       message("predictor values are extracted for prediction points")
       predpoints <- terra::extract(predictor_stack, terra::vect(predpoints), ID=FALSE)
+    } else if(space == "feature_geo") {
+      message("predictor values are extracted for prediction points")
+      predpoints <- terra::extract(predictor_stack, terra::vect(predpoints), ID=FALSE, bind=TRUE) |>
+        sf::st_as_sf()
     }
 
-  }else if(!is.null(predpoints) & space == "geographical"){
+  }else if(!is.null(predpoints) & space %in% c("geographical", "feature_geo")){
     if(!identical(sf::st_crs(tpoints), sf::st_crs(predpoints))){
       stop("tpoints and predpoints must have the same CRS")
     }
@@ -262,7 +316,7 @@ knndm <- function(tpoints, modeldomain = NULL, predpoints = NULL,
 
 
   # Conditional preprocessing actions
-  if(space == "geographical") {
+  if(space %in% c("geographical", "feature_geo")) {
     if (any(class(tpoints) %in% "sfc")) {
       tpoints <- sf::st_sf(geom = tpoints)
     }
@@ -275,14 +329,17 @@ knndm <- function(tpoints, modeldomain = NULL, predpoints = NULL,
     }else{
       islonglat <- sf::st_is_longlat(tpoints)
     }
-  } else if (space == "feature") {
+  }
+  if(space == "feature") {
     # drop geometry if tpoints / predpoints are of class sf
-    if(any(class(tpoints) %in% c("sf","sfc"))) {
+    if(any(class(tpoints) %in% c("sf","sfc")) & space == "feature") {
       tpoints <- sf::st_set_geometry(tpoints, NULL)
     }
-    if(any(class(predpoints) %in% c("sf","sfc"))) {
+    if(any(class(predpoints) %in% c("sf","sfc")) & space == "feature") {
       predpoints <- sf::st_set_geometry(predpoints, NULL)
     }
+  }
+  if (space %in% c("feature", "feature_geo")) {
     # get names of categorical variables
     catVars <- names(tpoints)[which(sapply(tpoints, class)%in%c("factor","character"))]
     if(length(catVars)==0) {
@@ -303,7 +360,13 @@ knndm <- function(tpoints, modeldomain = NULL, predpoints = NULL,
   }
 
 
-
+  # if train/test split desired: adjust parameters
+  if(!is.null(prop_test)) {
+    k <- 2
+    if(maxp <= 0.5) {
+      maxp <- 0.9
+    }
+  }
 
 
   # kNNDM in the geographical / feature space
@@ -312,14 +375,24 @@ knndm <- function(tpoints, modeldomain = NULL, predpoints = NULL,
     # prior checks
     check_knndm_geo(tpoints, predpoints, space, k, maxp, clustering, islonglat)
     # kNNDM in geographical space
-    knndm_res <- knndm_geo(tpoints, predpoints, k, maxp, clustering, linkf, islonglat)
+    knndm_res <- knndm_geo(tpoints, predpoints, k, maxp, clustering, linkf, islonglat, prop_test)
 
   } else if (isTRUE(space == "feature")) {
 
     # prior checks
-    check_knndm_feature(tpoints, predpoints, space, k, maxp, clustering, islonglat, catVars,useMD)
+    check_knndm_feature(tpoints, predpoints, space, k, maxp, clustering, islonglat, catVars, useMD)
     # kNNDM in feature space
-    knndm_res <- knndm_feature(tpoints, predpoints, k, maxp, clustering, linkf, catVars, useMD)
+    knndm_res <- knndm_feature(tpoints, predpoints, k, maxp, clustering, linkf, catVars, useMD, prop_test)
+
+  } else if (isTRUE(space == "feature_geo")) {
+
+    # prior checks
+    check_knndm_feature(tpoints, predpoints, space, k, maxp, clustering, islonglat, catVars, useMD)
+    check_knndm_geo(tpoints, predpoints, space, k, maxp, clustering, islonglat)
+
+    # kNNDM in feature space
+    knndm_res <- knndm_feature_geo(tpoints, predpoints, k, maxp, clustering, linkf, catVars, useMD, prop_test,
+                                   islonglat, lambda)
 
   }
 
@@ -332,13 +405,11 @@ knndm <- function(tpoints, modeldomain = NULL, predpoints = NULL,
 check_knndm_geo <- function(tpoints, predpoints, space, k, maxp, clustering, islonglat){
 
   if(!identical(sf::st_crs(tpoints), sf::st_crs(predpoints))){
-    stop("tpoints and predpoints must have the same CRS")
+    warning("tpoints and predpoints must have the same CRS; predpoints have been transformed to the CRS of tpoints")
+    predpoints <- sf::st_transform(predpoints, sf::st_crs(tpoints))
   }
   if (!(clustering %in% c("kmeans", "hierarchical"))) {
     stop("clustering must be one of `kmeans` or `hierarchical`")
-  }
-  if (space != "geographical") {
-    stop("Only kNNDM in the geographical space is currently implemented.")
   }
   if (!(maxp < 1 & maxp > 1/k)) {
     stop("maxp must be strictly between 1/k and 1")
@@ -379,7 +450,7 @@ check_knndm_feature <- function(tpoints, predpoints, space, k, maxp, clustering,
 
 
 # kNNDM in the geographical space
-knndm_geo <- function(tpoints, predpoints, k, maxp, clustering, linkf, islonglat){
+knndm_geo <- function(tpoints, predpoints, k, maxp, clustering, linkf, islonglat, prop_test){
 
   # Gj and Gij calculation
   tcoords <- sf::st_coordinates(tpoints)[,1:2]
@@ -401,7 +472,13 @@ knndm_geo <- function(tpoints, predpoints, k, maxp, clustering, linkf, islonglat
   testks <- suppressWarnings(stats::ks.test(Gj, Gij, alternative = "great"))
   if(testks$p.value >= 0.05){
 
-    clust <- sample(rep(1:k, ceiling(nrow(tpoints)/k)), size = nrow(tpoints), replace=F)
+
+    if(!is.null(prop_test)) {
+      clust <- sample(rep(1:k, ceiling(nrow(tpoints)/k)), size = nrow(tpoints), replace=T,
+                      prob = rep(c(1-prop_test, prop_test), ceiling(nrow(tpoints)/k)))
+    } else {
+      clust <- sample(rep(1:k, ceiling(nrow(tpoints)/k)), size = nrow(tpoints), replace=F)
+    }
 
     if(isTRUE(islonglat)){
       Gjstar <- distclust_distmat(distmat, clust)
@@ -426,8 +503,15 @@ knndm_geo <- function(tpoints, predpoints, k, maxp, clustering, linkf, islonglat
     # Build grid of number of clusters to try - we sample low numbers more intensively
     clustgrid <- data.frame(nk = as.integer(round(exp(seq(log(k), log(nrow(tpoints)-2),
                                                           length.out = 100)))))
+
     clustgrid$W <- NA
     clustgrid <- clustgrid[!duplicated(clustgrid$nk),]
+
+    if(!is.null(prop_test)) {
+      n_test <- floor(prop_test*clustgrid$nk)
+      clustgrid <- clustgrid[n_test>1,]
+    }
+
     clustgroups <- list()
 
     # Compute 1st PC for ordering clusters
@@ -467,7 +551,24 @@ knndm_geo <- function(tpoints, predpoints, k, maxp, clustering, linkf, islonglat
 
       # And we merge the remaining into k groups
       clust_i <- setdiff(1:k, unique(tabclust$clust_k))
-      tabclust$clust_k[is.na(tabclust$clust_k)] <- rep(clust_i, ceiling(nk/length(clust_i)))[1:sum(is.na(tabclust$clust_k))]
+      if(is.null(prop_test)) {
+        tabclust$clust_k[is.na(tabclust$clust_k)] <- rep(clust_i, ceiling(nk/length(clust_i)))[1:sum(is.na(tabclust$clust_k))]
+      } else {
+        n_train <- ceiling((1-prop_test)*nk)
+        n_test <- floor(prop_test*nk)
+
+        if(n_train > n_test) {
+          v1 <- rep(1, times=n_train)
+          v2 <- c(rep(2, times=n_test), rep(NA, n_train - n_test))
+        } else {
+          v1 <- rep(1, times=n_test)
+          v2 <- c(rep(2, times=n_train), rep(NA, n_test - n_train))
+        }
+
+        v3 <- c(rbind(v1, v2))
+        tabclust$clust_k[is.na(tabclust$clust_k)] <- v3[!is.na(v3)]
+      }
+
       tabclust2 <- data.frame(ID = 1:length(clust_nk), clust_nk = clust_nk)
       tabclust2 <- merge(tabclust2, tabclust, by = "clust_nk")
       tabclust2 <- tabclust2[order(tabclust2$ID),]
@@ -509,7 +610,7 @@ knndm_geo <- function(tpoints, predpoints, k, maxp, clustering, linkf, islonglat
 
 
 # kNNDM in the feature space
-knndm_feature <- function(tpoints, predpoints, k, maxp, clustering, linkf, catVars, useMD) {
+knndm_feature <- function(tpoints, predpoints, k, maxp, clustering, linkf, catVars, useMD, prop_test) {
 
   # rescale data
   if(is.null(catVars)) {
@@ -594,7 +695,12 @@ knndm_feature <- function(tpoints, predpoints, k, maxp, clustering, linkf, catVa
   testks <- suppressWarnings(stats::ks.test(Gj, Gij, alternative = "great"))
   if(testks$p.value >= 0.05){
 
-    clust <- sample(rep(1:k, ceiling(nrow(tpoints)/k)), size = nrow(tpoints), replace=F)
+    if(!is.null(prop_test)) {
+      clust <- sample(rep(1:k, ceiling(nrow(tpoints)/k)), size = nrow(tpoints), replace=T,
+                      prob = rep(c(1-prop_test, prop_test), ceiling(nrow(tpoints)/k)))
+    } else {
+      clust <- sample(rep(1:k, ceiling(nrow(tpoints)/k)), size = nrow(tpoints), replace=F)
+    }
 
     if(is.null(catVars)) {
       if(isTRUE(useMD)) {
@@ -645,6 +751,12 @@ knndm_feature <- function(tpoints, predpoints, k, maxp, clustering, linkf, catVa
                                                           length.out = 100)))))
     clustgrid$W <- NA
     clustgrid <- clustgrid[!duplicated(clustgrid$nk),]
+
+    if(!is.null(prop_test)) {
+      n_test <- floor(prop_test*clustgrid$nk)
+      clustgrid <- clustgrid[n_test>1,]
+    }
+
     clustgroups <- list()
 
     # Compute 1st PC for ordering clusters
@@ -713,11 +825,31 @@ knndm_feature <- function(tpoints, predpoints, k, maxp, clustering, linkf, catVa
 
         # And we merge the remaining into k groups
         clust_i <- setdiff(1:k, unique(tabclust$clust_k))
-        tabclust$clust_k[is.na(tabclust$clust_k)] <- rep(clust_i, ceiling(nk/length(clust_i)))[1:sum(is.na(tabclust$clust_k))]
+
+        if(is.null(prop_test)) {
+          tabclust$clust_k[is.na(tabclust$clust_k)] <- rep(clust_i, ceiling(nk/length(clust_i)))[1:sum(is.na(tabclust$clust_k))]
+        } else {
+          n_train <- ceiling((1-prop_test)*nk)
+          n_test <- floor(prop_test*nk)
+
+          if(n_train > n_test) {
+            v1 <- rep(1, times=n_train)
+            v2 <- c(rep(2, times=n_test), rep(NA, n_train - n_test))
+          } else {
+            v1 <- rep(1, times=n_test)
+            v2 <- c(rep(2, times=n_train), rep(NA, n_test - n_train))
+          }
+
+          v3 <- c(rbind(v1, v2))
+          tabclust$clust_k[is.na(tabclust$clust_k)] <- v3[!is.na(v3)]
+        }
+
         tabclust2 <- data.frame(ID = 1:length(clust_nk), clust_nk = clust_nk)
         tabclust2 <- merge(tabclust2, tabclust, by = "clust_nk")
         tabclust2 <- tabclust2[order(tabclust2$ID),]
         clust_k <- tabclust2$clust_k
+
+
 
         # Compute W statistic if not exceeding maxp
         if(!(any(table(clust_k)/length(clust_k)>maxp))){
@@ -773,6 +905,278 @@ knndm_feature <- function(tpoints, predpoints, k, maxp, clustering, linkf, catVa
   res <- list(clusters = clust,
               indx_train = cfolds$index, indx_test = cfolds$indexOut,
               Gij = Gij, Gj = Gj, Gjstar = Gjstar,
+              W = W_final, method = clustering, q = k_final, space = "feature")
+  class(res) <- c("knndm", "list")
+  res
+}
+
+# kNNDM in both, feature and geographical space
+knndm_feature_geo <- function(tpoints, predpoints, k, maxp, clustering, linkf,
+                              islonglat, catVars, useMD, prop_test, lambda) {
+
+
+
+  tpoints_df <- sf::st_drop_geometry(tpoints)
+  predpoints_df <- sf::st_drop_geometry(predpoints)
+
+  # rescale data
+  if(is.null(catVars)) {
+
+    scale_attr <- attributes(scale(tpoints_df))
+    tpoints_df <- scale(tpoints_df) |> as.data.frame()
+    predpoints_df <- scale(predpoints_df,center=scale_attr$`scaled:center`,
+                        scale=scale_attr$`scaled:scale`) |>
+      as.data.frame()
+
+  } else {
+    tpoints_df_cat <- tpoints_df[,catVars,drop=FALSE]
+    predpoints_df_cat <- predpoints_df[,catVars,drop=FALSE]
+
+    tpoints_df_num <- tpoints_df[,-which(names(tpoints_df)%in%catVars),drop=FALSE]
+    predpoints_df_num <- predpoints_df[,-which(names(predpoints_df)%in%catVars),drop=FALSE]
+
+    scale_attr <- attributes(scale(tpoints_df_num))
+    tpoints_df <- scale(tpoints_df_num) |> as.data.frame()
+    predpoints_df <- scale(predpoints_df_num,center=scale_attr$`scaled:center`,
+                        scale=scale_attr$`scaled:scale`) |>
+      as.data.frame()
+    tpoints_df <- as.data.frame(cbind(tpoints_df, lapply(tpoints_df_cat, as.factor)))
+    predpoints_df <- as.data.frame(cbind(predpoints_df, lapply(predpoints_df_cat, as.factor)))
+
+  }
+
+
+  # Gj and Gij calculation in geographical space
+  tcoords <- sf::st_coordinates(tpoints)[,1:2]
+  if(isTRUE(islonglat)){
+    distmat <- sf::st_distance(tpoints)
+    units(distmat) <- NULL
+    diag(distmat) <- NA
+    Gj_geo <- apply(distmat, 1, function(x) min(x, na.rm=TRUE))
+    Gij_geo <- sf::st_distance(predpoints, tpoints)
+    units(Gij_geo) <- NULL
+    Gij_geo <- apply(Gij_geo, 1, min)
+  }else{
+    Gj_geo <- c(FNN::knn.dist(tcoords, k = 1))
+    Gij_geo <- c(FNN::knnx.dist(query = sf::st_coordinates(predpoints)[,1:2],
+                            data = tcoords, k = 1))
+  }
+
+  # Gj_feature and Gij_feature calculation in feature space
+  if(is.null(catVars)) {
+
+    if(isTRUE(useMD)) {
+
+      tpoints_df_mat <- as.matrix(tpoints_df)
+      predpoints_df_mat <- as.matrix(predpoints_df)
+
+      # use Mahalanobis distances
+      if (dim(tpoints_df_mat)[2] == 1) {
+        S <- matrix(stats::var(tpoints_df_mat), 1, 1)
+        tpoints_df_mat <- as.matrix(tpoints_df_mat, ncol = 1)
+      } else {
+        S <- stats::cov(tpoints_df_mat)
+      }
+      S_inv <- MASS::ginv(S)
+
+      # calculate distance matrix
+      distmat <- matrix(nrow=nrow(tpoints_df), ncol=nrow(tpoints_df))
+      distmat <- sapply(1:nrow(distmat), function(i) {
+        sapply(1:nrow(distmat), function(j) {
+          sqrt(t(tpoints_df_mat[i,] - tpoints_df_mat[j,]) %*% S_inv %*% (tpoints_df_mat[i,] - tpoints_df_mat[j,]))
+        })
+      })
+      diag(distmat) <- NA
+
+      Gj_feature <- apply(distmat, 1, min, na.rm=TRUE)
+
+      Gij_feature <- sapply(1:dim(predpoints_df_mat)[1], function(y) {
+        min(sapply(1:dim(tpoints_df_mat)[1], function(x) {
+          sqrt(t(predpoints_df_mat[y,] - tpoints_df_mat[x,]) %*% S_inv %*% (predpoints_df_mat[y,] - tpoints_df_mat[x,]))
+        }))
+      })
+
+
+    } else {
+      # use FNN with Euclidean distances if no categorical variables are present
+      Gj_feature <- c(FNN::knn.dist(tpoints_df, k = 1))
+      Gij_feature <- c(FNN::knnx.dist(query = predpoints_df, data = tpoints_df, k = 1))
+    }
+
+
+  } else {
+
+    # use Gower distances if categorical variables are present
+    Gj_feature <- sapply(1:nrow(tpoints_df), function(i) gower::gower_topn(tpoints_df[i,], tpoints_df[-i,], n=1)$distance[[1]])
+    Gij_feature <- c(gower::gower_topn(predpoints_df, tpoints_df, n = 1)$distance)
+
+  }
+
+
+  # scale geographical and feature-space NNDs
+  range01 <- function(x){(x-min(x))/(max(x)-min(x))}
+  NNDs_stand <- lapply(list("Gj_feature"=Gj_feature, "Gj_geo"=Gj_geo, "Gij_feature"=Gij_feature,
+                            "Gij_geo"=Gij_geo), range01)
+
+  Gj <- NNDs_stand$Gj_geo + lambda*NNDs_stand$Gj_feature
+  Gij <- NNDs_stand$Gij_geo + lambda*NNDs_stand$Gij_feature
+
+
+  # Check if Gj_feature > Gij_feature | Gj_geo > Gij_geo (warning suppressed regarding ties)
+  testks_geo <- suppressWarnings(stats::ks.test(Gj_feature, Gij_feature, alternative = "great"))
+  testks_feature <- suppressWarnings(stats::ks.test(Gj_geo, Gij_geo, alternative = "great"))
+  if(testks_geo$p.value >= 0.05 | testks_feature$p.value >= 0.05){
+
+    if(!is.null(prop_test)) {
+      clust <- sample(rep(1:k, ceiling(nrow(tpoints_df)/k)), size = nrow(tpoints_df), replace=T,
+                      prob = rep(c(1-prop_test, prop_test), ceiling(nrow(tpoints_df)/k)))
+    } else {
+      clust <- sample(rep(1:k, ceiling(nrow(tpoints_df)/k)), size = nrow(tpoints_df), replace=F)
+    }
+
+    if(is.null(catVars)) {
+      if(isTRUE(useMD)) {
+        Gj_featurestar <- distclust_MD(tpoints_df, clust)
+      } else {
+        Gj_featurestar <- distclust_euclidean(tpoints_df, clust)
+      }
+
+    } else {
+      Gj_featurestar <- distclust_gower(tpoints_df, clust)
+    }
+
+    k_final <- "random CV"
+    W_final <- twosamples::wass_stat(Gj_featurestar, Gij_feature)
+    message("Gij_feature <= Gj_feature; a random CV assignment is returned")
+
+  }else{
+
+
+    # geographical similarities among grid cells
+    distmat_geo <- apcluster::negDistMat(tcoords, r = 1) #2?
+
+    # similarities among leading canonical variates
+    distmat_feature <- apcluster::negDistMat(tpoints_df, r = 1)
+
+    # make an assymetric distance matrix containing feature space simililarities ...
+    distmat <- distmat_feature
+
+    # ... and geographical distances to induce spatial coherence
+    distmat[lower.tri(distmat)] <- distmat_geo[lower.tri(distmat_geo)]
+
+    # Build grid of number of clusters to try - we sample low numbers more intensively
+    clustgrid <- data.frame(nk = as.integer(round(exp(seq(log(k), log(nrow(tpoints)-2),
+                                                          length.out = 100)))))
+    clustgrid$W <- NA
+    clustgrid <- clustgrid[!duplicated(clustgrid$nk),]
+
+    clustgroups <- list()
+
+    # Compute 1st PC for ordering clusters
+    if(is.null(catVars)) {
+      pcacoords <- stats::prcomp(tpoints_df, center = TRUE, scale. = FALSE, rank = 1)
+    } else {
+      pcacoords <- PCAmixdata::PCAmix(X.quanti = tpoints_df[,!(names(tpoints_df) %in% catVars), drop=FALSE],
+                                      X.quali = tpoints_df[,names(tpoints_df) %in% catVars, drop=FALSE],
+                                      graph = FALSE)
+    }
+
+    # We test each number of clusters
+    for(nk in clustgrid$nk) {
+
+      # Create nk clusters by affinity propagation
+      clust_nk <- apcluster::aggExCluster(distmat)
+      clust_nk <- apcluster::cutree(clust_nk, k=nk)@idx |> as.vector()
+
+      if (!inherits(clust_nk,"error")){
+        tabclust <- as.data.frame(table(clust_nk))
+        tabclust$clust_k <- NA
+
+        # compute cluster centroids and apply PC loadings to shuffle along the 1st dimension
+        if(is.null(catVars)) {
+          centr_tpoints_df <- sapply(tabclust$clust_nk, function(x){
+            centrpca <- matrix(apply(tpoints_df[clust_nk %in% x, , drop=FALSE], 2, mean), nrow = 1)
+            colnames(centrpca) <- colnames(tpoints_df)
+            return(predict(pcacoords, centrpca))
+          })
+        } else {
+          centr_tpoints_df <- sapply(tabclust$clust_nk, function(x){
+            centrpca_num <- matrix(apply(tpoints_df[clust_nk %in% x, !(names(tpoints_df) %in% catVars), drop=FALSE], 2, mean), nrow = 1)
+            centrpca_cat <- matrix(apply(tpoints_df[clust_nk %in% x, names(tpoints_df) %in% catVars, drop=FALSE], 2,
+                                         function(y) names(which.max(table(y)))), nrow = 1)
+            colnames(centrpca_num) <- colnames(tpoints_df[,!(names(tpoints_df) %in% catVars), drop=FALSE])
+            colnames(centrpca_cat) <- colnames(tpoints_df[,names(tpoints_df) %in% catVars, drop=FALSE])
+
+            return(predict(pcacoords, centrpca_num, centrpca_cat)[,1])
+
+          })
+        }
+
+        tabclust$centrpca <- centr_tpoints_df
+        tabclust <- tabclust[order(tabclust$centrpca),]
+
+        # We don't merge big clusters
+        clust_i <- 1
+        for(i in 1:nrow(tabclust)){
+          if(tabclust$Freq[i] >= nrow(tpoints_df)/k){
+            tabclust$clust_k[i] <- clust_i
+            clust_i <- clust_i + 1
+          }
+        }
+        rm("clust_i")
+
+        # And we merge the remaining into k groups
+        clust_i <- setdiff(1:k, unique(tabclust$clust_k))
+
+        tabclust$clust_k[is.na(tabclust$clust_k)] <- rep(clust_i, ceiling(nk/length(clust_i)))[1:sum(is.na(tabclust$clust_k))]
+
+        tabclust2 <- data.frame(ID = 1:length(clust_nk), clust_nk = clust_nk)
+        tabclust2 <- merge(tabclust2, tabclust, by = "clust_nk")
+        tabclust2 <- tabclust2[order(tabclust2$ID),]
+        clust_k <- tabclust2$clust_k
+
+        # Compute W statistic if not exceeding maxp
+        if(!(any(table(clust_k)/length(clust_k)>maxp))){
+
+          diag(distmat) <- NA
+          Gjstar_i <- distclust_distmat(distmat*(-1), clust_k)
+
+          clustgrid$W[clustgrid$nk==nk] <- twosamples::wass_stat(Gjstar_i, Gij)
+          clustgroups[[paste0("nk", nk)]] <- clust_k
+        }
+      } else {
+        message(paste("skipped nk", nk))
+      }
+    }
+
+    # Final configuration
+    k_final <- clustgrid$nk[which.min(clustgrid$W)]
+    W_final <- min(clustgrid$W, na.rm=T)
+    clust <- clustgroups[[paste0("nk", k_final)]]
+
+    if(clustering == "kmeans") {
+      if(is.null(catVars)) {
+        if(isTRUE(useMD)) {
+          Gj_featurestar <- distclust_MD(tpoints, clust)
+        } else {
+          Gj_featurestar <- distclust_euclidean(tpoints, clust)
+        }
+
+      } else {
+        Gj_featurestar <- distclust_gower(tpoints, clust)
+      }
+    } else {
+      Gj_featurestar <- distclust_distmat(distmat, clust)
+    }
+
+  }
+
+
+  # Output
+  cfolds <- CAST::CreateSpacetimeFolds(data.frame(clust=clust), spacevar = "clust", k = k)
+  res <- list(clusters = clust,
+              indx_train = cfolds$index, indx_test = cfolds$indexOut,
+              Gij_feature = Gij_feature, Gj_feature = Gj_feature, Gj_featurestar = Gj_featurestar,
               W = W_final, method = clustering, q = k_final, space = "feature")
   class(res) <- c("knndm", "list")
   res
