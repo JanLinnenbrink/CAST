@@ -234,7 +234,7 @@
 #' terra::plot(predictors_sp[["bio_1"]])
 #' terra::plot(vect(splotdata), add = T)
 #'
-#'knndm_folds <- knndm(trainDat[,predictors], modeldomain = predictors_sp, space = "feature_geo"
+#'knndm_folds <- knndm(trainDat[,predictors], modeldomain = predictors_sp, space = "feature_geo",
 #'                     clustering="hierarchical", k=4, maxp=0.8)
 #'plot(knndm_folds, type="simple")
 #'
@@ -246,16 +246,6 @@ knndm <- function(tpoints, modeldomain = NULL, predpoints = NULL,
                   samplesize = 1000, sampling = "regular", useMD=FALSE,
                   lambda = 1){
 
-
-
-  tpoints=trainDat[,predictors]
-  predpoints = NULL
-  modeldomain = predictors_sp
-  space = "feature_geo"
-  k = 10; maxp = 0.5; prop_test=NULL;
-  clustering = "hierarchical"; linkf = "ward.D2";
-  samplesize = 1000; sampling = "regular"; useMD=FALSE
-  lambda=1
 
   # create sample points from modeldomain
   if(is.null(predpoints)&!is.null(modeldomain)){
@@ -1052,16 +1042,16 @@ knndm_feature_geo <- function(tpoints, predpoints, k, maxp, clustering, linkf,
   }else{
 
 
-    # geographical similarities among grid cells
+    # geographical similarities
     distmat_geo <- apcluster::negDistMat(tcoords, r = 1) #2?
 
-    # similarities among leading canonical variates
+    # feature similarities
     distmat_feature <- apcluster::negDistMat(tpoints_df, r = 1)
 
-    # make an assymetric distance matrix containing feature space simililarities ...
+    # create assymetric distance matrix with feature space distance in upper triangle
     distmat <- distmat_feature
 
-    # ... and geographical distances to induce spatial coherence
+    # paste geographical similarities in lower triangle
     distmat[lower.tri(distmat)] <- distmat_geo[lower.tri(distmat_geo)]
 
     # Build grid of number of clusters to try - we sample low numbers more intensively
@@ -1083,6 +1073,8 @@ knndm_feature_geo <- function(tpoints, predpoints, k, maxp, clustering, linkf,
 
     # We test each number of clusters
     for(nk in clustgrid$nk) {
+
+      print(nk)
 
       # Create nk clusters by affinity propagation
       clust_nk <- apcluster::aggExCluster(distmat)
@@ -1166,7 +1158,7 @@ knndm_feature_geo <- function(tpoints, predpoints, k, maxp, clustering, linkf,
         Gj_featurestar <- distclust_gower(tpoints, clust)
       }
     } else {
-      Gj_featurestar <- distclust_distmat(distmat, clust)
+      Gj_featurestar <- distclust_distmat(distmat*(-1), clust)
     }
 
   }
@@ -1176,7 +1168,7 @@ knndm_feature_geo <- function(tpoints, predpoints, k, maxp, clustering, linkf,
   cfolds <- CAST::CreateSpacetimeFolds(data.frame(clust=clust), spacevar = "clust", k = k)
   res <- list(clusters = clust,
               indx_train = cfolds$index, indx_test = cfolds$indexOut,
-              Gij_feature = Gij_feature, Gj_feature = Gj_feature, Gj_featurestar = Gj_featurestar,
+              Gij = Gij_feature, Gj = Gj_feature, Gjstar = Gj_featurestar,
               W = W_final, method = clustering, q = k_final, space = "feature")
   class(res) <- c("knndm", "list")
   res
