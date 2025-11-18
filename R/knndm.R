@@ -206,6 +206,7 @@
 knndm <- function(tpoints, modeldomain = NULL, predpoints = NULL,
                   space = "geographical",
                   k = 10, maxp = 0.5,
+                  prop_test = NULL, tolerance = NULL,
                   clustering = "hierarchical", linkf = "ward.D2",
                   samplesize = 1000, sampling = "regular", useMD=FALSE,
                   algorithm="brute"){
@@ -263,6 +264,32 @@ knndm <- function(tpoints, modeldomain = NULL, predpoints = NULL,
     }
   }
 
+  # Adjust parameters when prop_test is defined
+  if(!is.null(prop_test)) {
+    if(prop_test >= 1 | prop_test <= 0) {
+      stop("prop_test must be greater than 0 and smaller than 1")
+    }
+
+    if(is.null(tolerance)) tolerance <- 0.1
+
+    # define parameters
+    k <- 2
+    maxp <- prop_test + tolerance
+    minp <- prop_test - tolerance
+
+    if(minp <= 0 | maxp >= 1) {
+      stop("Misspecified tolerance. Resulted in infeasible minp/maxp values")
+    }
+
+    if(maxp == 1/k) {
+      # adds some numerical tolerance to avoid maxp = 1/k
+      eps <- .Machine$double.eps^0.5
+      maxp <- maxp + eps
+    }
+  } else {
+    minp <- NULL
+  }
+
 
   # Conditional preprocessing actions
   if(space == "geographical") {
@@ -315,14 +342,14 @@ knndm <- function(tpoints, modeldomain = NULL, predpoints = NULL,
     # prior checks
     check_knndm_geo(tpoints, predpoints, space, k, maxp, clustering, islonglat)
     # kNNDM in geographical space
-    knndm_res <- knndm_geo(tpoints, predpoints, k, maxp, clustering, linkf, islonglat, algorithm=algorithm)
+    knndm_res <- knndm_geo(tpoints, predpoints, k, maxp, prop_test, tolerance, minp, clustering, linkf, islonglat, algorithm=algorithm)
 
   } else if (isTRUE(space == "feature")) {
 
     # prior checks
     check_knndm_feature(tpoints, predpoints, space, k, maxp, clustering, islonglat, catVars,useMD)
     # kNNDM in feature space
-    knndm_res <- knndm_feature(tpoints, predpoints, k, maxp, clustering, linkf, catVars, useMD, algorithm=algorithm)
+    knndm_res <- knndm_feature(tpoints, predpoints, k, maxp, prop_test, tolerance, minp, clustering, linkf, catVars, useMD, algorithm=algorithm)
 
   }
 
@@ -343,14 +370,16 @@ check_knndm_geo <- function(tpoints, predpoints, space, k, maxp, clustering, isl
   if (space != "geographical") {
     stop("Only kNNDM in the geographical space is currently implemented.")
   }
-  if (!(maxp < 1 & maxp > 1/k)) {
+  if(is.null(prop_test)) {
+    if (!(maxp < 1 & maxp > 1/k)) {
     stop("maxp must be strictly between 1/k and 1")
+   }
   }
   if(isTRUE(islonglat) & clustering == "kmeans"){
     stop("kmeans works in the Euclidean space and therefore can only handle
          projected coordinates. Please use hierarchical clustering or project your data.")
   }
-}
+  }
 
 check_knndm_feature <- function(tpoints, predpoints, space, k, maxp, clustering, islonglat, catVars, useMD){
 
@@ -382,7 +411,7 @@ check_knndm_feature <- function(tpoints, predpoints, space, k, maxp, clustering,
 
 
 # kNNDM in the geographical space
-knndm_geo <- function(tpoints, predpoints, k, maxp, clustering, linkf, islonglat, algorithm){
+knndm_geo <- function(tpoints, predpoints, k, maxp, prop_test, tolerance, minp, clustering, linkf, islonglat, algorithm){
 
   # Gj and Gij calculation
   tcoords <- sf::st_coordinates(tpoints)[,1:2]
@@ -404,7 +433,16 @@ knndm_geo <- function(tpoints, predpoints, k, maxp, clustering, linkf, islonglat
   testks <- suppressWarnings(stats::ks.test(Gj, Gij, alternative = "great"))
   if(testks$p.value >= 0.05){
 
-    clust <- sample(rep(1:k, ceiling(nrow(tpoints)/k)), size = nrow(tpoints), replace=F)
+    if(!is.null(prop_test)) {
+      ntest <- floor(prop_test * nrow(tpoints))
+      ntrain <- nrow(tpoints) - ntest
+      # Create a vector: 1 = train, 2 = test
+      clusters <- c(rep(1, ntrain), rep(2, ntest))
+      # Shuffle randomly
+      clust <- sample(clusters, nrow(tpoints))
+    } else {
+      clust <- sample(rep(1:k, ceiling(nrow(tpoints)/k)), size = nrow(tpoints), replace=F)
+    }
 
     if(isTRUE(islonglat)){
       Gjstar <- distclust_distmat(distmat, clust)
@@ -459,14 +497,16 @@ knndm_geo <- function(tpoints, predpoints, k, maxp, clustering, linkf, islonglat
       tabclust <- tabclust[order(tabclust$centrpca),]
 
       # We don't merge big clusters
-      clust_i <- 1
-      for(i in 1:nrow(tabclust)){
-        if(tabclust$Freq[i] >= nrow(tpoints)/k){
-          tabclust$clust_k[i] <- clust_i
-          clust_i <- clust_i + 1
+      if(is.null(prop_test)) {
+        clust_i <- 1
+        for(i in 1:nrow(tabclust)){
+          if(tabclust$Freq[i] >= nrow(tpoints)/k){
+            tabclust$clust_k[i] <- clust_i
+            clust_i <- clust_i + 1
+          }
         }
+        rm("clust_i")
       }
-      rm("clust_i")
 
       # And we merge the remaining into k groups
       clust_i <- setdiff(1:k, unique(tabclust$clust_k))
@@ -477,7 +517,8 @@ knndm_geo <- function(tpoints, predpoints, k, maxp, clustering, linkf, islonglat
       clust_k <- tabclust2$clust_k
 
       # Compute W statistic if not exceeding maxp
-      if(!any(table(clust_k)/length(clust_k)>maxp)){
+      if(is.null(prop_test)) {
+        if(!any(table(clust_k)/length(clust_k)>maxp)){
 
         if(isTRUE(islonglat)){
           Gjstar_i <- distclust_distmat(distmat, clust_k)
@@ -486,6 +527,29 @@ knndm_geo <- function(tpoints, predpoints, k, maxp, clustering, linkf, islonglat
         }
         clustgrid$W[clustgrid$nk==nk] <- twosamples::wass_stat(Gjstar_i, Gij)
         clustgroups[[paste0("nk", nk)]] <- clust_k
+        }
+      } else {
+
+        # Calculate the proportion by group (train/test)
+        p1 <- mean(clust_k == 1)
+        p2 <- mean(clust_k == 2)
+        props <- c(p1, p2)
+
+        # Keep only groups within range minp–maxp
+        valid <- props >= minp & props <= maxp
+
+        if(any(valid)) {
+          if(isTRUE(islonglat)){
+            Gjstar_i <- distclust_distmat(distmat, clust_k)
+          }else{
+            Gjstar_i <- distclust_euclidean(tcoords, clust_k,algorithm=algorithm)
+          }
+          
+          clustgrid$W[clustgrid$nk==nk] <- twosamples::wass_stat(Gjstar_i, Gij)
+          clustgroups[[paste0("nk", nk)]] <- clust_k
+
+        }
+
       }
     }
 
@@ -512,7 +576,7 @@ knndm_geo <- function(tpoints, predpoints, k, maxp, clustering, linkf, islonglat
 
 
 # kNNDM in the feature space
-knndm_feature <- function(tpoints, predpoints, k, maxp, clustering, linkf, catVars, useMD, algorithm) {
+knndm_feature <- function(tpoints, predpoints, k, maxp, prop_test, tolerance, minp, clustering, linkf, catVars, useMD, algorithm) {
 
   # rescale data
   if(is.null(catVars)) {
@@ -597,7 +661,16 @@ knndm_feature <- function(tpoints, predpoints, k, maxp, clustering, linkf, catVa
   testks <- suppressWarnings(stats::ks.test(Gj, Gij, alternative = "great"))
   if(testks$p.value >= 0.05){
 
-    clust <- sample(rep(1:k, ceiling(nrow(tpoints)/k)), size = nrow(tpoints), replace=F)
+    if(!is.null(prop_test)) {
+      ntest <- floor(prop_test * nrow(tpoints))
+      ntrain <- nrow(tpoints) - ntest
+      # Create a vector: 1 = train, 2 = test
+      clusters <- c(rep(1, ntrain), rep(2, ntest))
+      # Shuffle randomly
+      clust <- sample(clusters, nrow(tpoints))
+    } else {
+      clust <- sample(rep(1:k, ceiling(nrow(tpoints)/k)), size = nrow(tpoints), replace=F)
+    }
 
     if(is.null(catVars)) {
       if(isTRUE(useMD)) {
@@ -705,14 +778,16 @@ knndm_feature <- function(tpoints, predpoints, k, maxp, clustering, linkf, catVa
         tabclust <- tabclust[order(tabclust$centrpca),]
 
         # We don't merge big clusters
-        clust_i <- 1
-        for(i in 1:nrow(tabclust)){
-          if(tabclust$Freq[i] >= nrow(tpoints)/k){
-            tabclust$clust_k[i] <- clust_i
-            clust_i <- clust_i + 1
+        if(is.null(prop_test)) {
+          clust_i <- 1
+          for(i in 1:nrow(tabclust)){
+            if(tabclust$Freq[i] >= nrow(tpoints)/k){
+              tabclust$clust_k[i] <- clust_i
+              clust_i <- clust_i + 1
+            }
           }
+          rm("clust_i")
         }
-        rm("clust_i")
 
         # And we merge the remaining into k groups
         clust_i <- setdiff(1:k, unique(tabclust$clust_k))
@@ -723,29 +798,66 @@ knndm_feature <- function(tpoints, predpoints, k, maxp, clustering, linkf, catVa
         clust_k <- tabclust2$clust_k
 
         # Compute W statistic if not exceeding maxp
-        if(!(any(table(clust_k)/length(clust_k)>maxp))){
+        if(is.null(prop_test)) {
+          if(!(any(table(clust_k)/length(clust_k)>maxp))){
 
-          if(clustering == "kmeans") {
-            if(is.null(catVars)) {
-              if(isTRUE(useMD)){
-                Gjstar_i <- distclust_MD(tpoints, clust_k)
+            if(clustering == "kmeans") {
+              if(is.null(catVars)) {
+                if(isTRUE(useMD)){
+                  Gjstar_i <- distclust_MD(tpoints, clust_k)
+                } else {
+                  Gjstar_i <- distclust_euclidean(tpoints, clust_k,algorithm=algorithm)
+                }
               } else {
-                Gjstar_i <- distclust_euclidean(tpoints, clust_k,algorithm=algorithm)
+                Gjstar_i <- distclust_gower(tpoints, clust_k)
               }
+
             } else {
-              Gjstar_i <- distclust_gower(tpoints, clust_k)
+              Gjstar_i <- distclust_distmat(distmat, clust_k)
             }
 
+            clustgrid$W[clustgrid$nk==nk] <- twosamples::wass_stat(Gjstar_i, Gij)
+            clustgroups[[paste0("nk", nk)]] <- clust_k
           } else {
-            Gjstar_i <- distclust_distmat(distmat, clust_k)
+          message(paste("skipped nk", nk))
           }
 
-          clustgrid$W[clustgrid$nk==nk] <- twosamples::wass_stat(Gjstar_i, Gij)
-          clustgroups[[paste0("nk", nk)]] <- clust_k
+        } else {
+
+          # Calculate the proportion by group (train/test)
+          p1 <- mean(clust_k == 1)
+          p2 <- mean(clust_k == 2)
+          props <- c(p1, p2)
+
+          # Keep only groups within range minp–maxp
+          valid <- props >= minp & props <= maxp
+
+          if(any(valid)) {
+            if(clustering == "kmeans") {
+              if(is.null(catVars)) {
+                if(isTRUE(useMD)){
+                  Gjstar_i <- distclust_MD(tpoints, clust_k)
+                } else {
+                  Gjstar_i <- distclust_euclidean(tpoints, clust_k,algorithm=algorithm)
+                }
+              } else {
+                Gjstar_i <- distclust_gower(tpoints, clust_k)
+              }
+
+            } else {
+              Gjstar_i <- distclust_distmat(distmat, clust_k)
+            }
+            
+            clustgrid$W[clustgrid$nk==nk] <- twosamples::wass_stat(Gjstar_i, Gij)
+            clustgroups[[paste0("nk", nk)]] <- clust_k
+
+          }
+
         }
-      } else {
-        message(paste("skipped nk", nk))
+        
+        
       }
+        
     }
 
     # Final configuration

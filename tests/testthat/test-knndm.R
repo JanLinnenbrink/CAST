@@ -367,3 +367,20 @@ test_that("kNNDM works in feature space with Mahalanobis distance without cluste
                  "Gij <= Gj; a random CV assignment is returned")
 
 })
+
+
+test_that("kNNDM works with train/test splits in geographical space", {
+  sf::sf_use_s2(TRUE)
+  aoi <- sf::st_as_sfc("POLYGON ((0 0, 10 0, 10 10, 0 10, 0 0))", crs="epsg:25832")
+  sample_area <- sf::st_as_sfc("POLYGON ((0 0, 4 0, 4 4, 0 4, 0 0))", crs="epsg:25832")
+
+  set.seed(1)
+  tpoints <- sf::st_sample(sample_area, 100)
+  predpoints <- sf::st_sample(aoi, 1000)
+
+  kout <- knndm(tpoints, predpoints=predpoints, prop_test = 0.3, tolerance = 0.1, space = "geographical")
+  expect_identical(round(kout$W,1), 2.4)
+  expect_identical(kout$method, "hierarchical")
+  expect_identical(kout$q, 4L)
+
+})
