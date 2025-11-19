@@ -384,3 +384,24 @@ test_that("kNNDM works with train/test splits in geographical space", {
   expect_identical(kout$q, 4L)
 
 })
+
+test_that("kNNDM works with train/test splits in feature space", {
+  skip_if_not_installed("PCAmixdata")
+  set.seed(1234)
+
+  data(splotdata)
+  splotdata <- splotdata[splotdata$Country == "Chile",]
+
+  predictors <- c("bio_1", "bio_4", "bio_5", "bio_6",
+                  "bio_8", "bio_9", "bio_12", "bio_13",
+                  "bio_14", "bio_15", "elev")
+  trainDat <- sf::st_drop_geometry(splotdata)
+  predictors_sp <- terra::rast(system.file("extdata", "predictors_chile.tif",package="CAST"))
+
+  knndm_folds <- knndm(trainDat[,predictors], modeldomain = predictors_sp, space = "feature",
+                       clustering="kmeans", prop_test = 0.4, tolerance = 0.1)
+
+
+  expect_equal(round(as.numeric(knndm_folds$Gjstar[40]),4), 0.8287)
+  expect_equal(round(as.numeric(knndm_folds$W),1), 1.8)
+})

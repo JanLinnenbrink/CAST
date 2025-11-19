@@ -10,26 +10,34 @@
 #' @param space character. Either "geographical" or "feature".
 #' @param k integer. Number of folds desired for CV. Defaults to 10.
 #' @param maxp numeric. Maximum fold size allowed, defaults to 0.5, i.e. a single fold can hold a maximum of half of the training points.
+#' @param prop_test numeric. The proportion of samples that should belong to the test set (e.g., 0.3). By default NULL, i.e. no train/test split.
+#' @param tolerance numeric. The allowed deviance from `prop_test`. The higher the tolerance, 
+#' the larger the possibility to obtain train/test splits that yield good approximations of the prediction situation.
+#' By default 0.1.  Make sure that \eqn{prop\_test + tolerance < 1} and \eqn{prop\_test - tolerance > 0}. Only used if `prop_test` is set.
 #' @param clustering character. Possible values include "hierarchical" and "kmeans". See details.
 #' @param linkf character. Only relevant if clustering = "hierarchical". Link function for agglomerative hierarchical clustering.
-#' Defaults to "ward.D2". Check `stats::hclust` for other options.
+#' Defaults to "ward.D2". Check \code{\link[stats]{hclust}} for other options.
 #' @param samplesize numeric. How many points in the modeldomain should be sampled as prediction points?
 #' Only required if modeldomain is used instead of predpoints.
-#' @param sampling character. How to draw prediction points from the modeldomain? See `sf::st_sample`.
+#' @param sampling character. How to draw prediction points from the modeldomain? See \code{\link[sf]{st_sample}}.
 #' Only required if modeldomain is used instead of predpoints.
 #' @param useMD boolean. Only for `space`=feature: shall the Mahalanobis distance be calculated instead of Euclidean?
 #' Only works with numerical variables.
 #' @param algorithm see \code{\link[FNN]{knnx.dist}} and \code{\link[FNN]{knnx.index}}
-#' @return An object of class \emph{knndm} consisting of a list of eight elements:
+#' @return An object of class \emph{knndm} consisting of a list of ten elements:
+#' clusters (a numeric vector containing the fold assignment for each observation,
+#' in case of train/test splits a character vector with labels "train" and "test"),
 #' indx_train, indx_test (indices of the observations to use as
 #' training/test data in each kNNDM CV iteration), Gij (distances for
 #' G function construction between prediction and target points), Gj
 #' (distances for G function construction during LOO CV), Gjstar (distances
 #' for modified G function during kNNDM CV), clusters (list of cluster IDs),
-#' W (Wasserstein statistic), and space (stated by the user in the function call).
+#' W (Wasserstein statistic), method (the clustering method used),
+#' q (the final number of intermediate clusters),
+#' and space (stated by the user in the function call).
 #'
 #' @details
-#' knndm is a k-fold version of NNDM LOO CV for medium and large datasets. Brielfy, the algorithm tries to
+#' `knndm` is a k-fold version of NNDM LOO CV for medium and large datasets. Brielfy, the algorithm tries to
 #' find a k-fold configuration such that the integral of the absolute differences (Wasserstein W statistic)
 #' between the empirical nearest neighbour distance distribution function between the test and training data during CV (Gj*),
 #' and the empirical nearest neighbour distance distribution function between the prediction and training points (Gij),
@@ -37,6 +45,9 @@
 #' clusters that range from k to N (number of observations), merging them into k final folds,
 #' and selecting the configuration with the lowest W.
 #'
+#' `knndm` can also be used to create train/test splits by specifying `prop_test`. Then, `maxp` is automatically 
+#' adjusted to \eqn{prop\_test + tolerance}, and an additional `minp` variable is defined as \eqn{prop\_test - tolerance}. 
+#' 
 #' Using a projected CRS in `knndm` has large computational advantages since fast nearest neighbour search can be
 #' done via the `FNN` package, while working with geographic coordinates requires computing the full
 #' spherical distance matrices. As a clustering algorithm, `kmeans` can only be used for
@@ -74,8 +85,8 @@
 #' For spatial visualization of fold affiliation see examples.
 #' @references
 #' \itemize{
-#' \item Linnenbrink, J., Milà, C., Ludwig, M., and Meyer, H.: kNNDM: k-fold Nearest Neighbour Distance Matching Cross-Validation for map accuracy estimation, EGUsphere [preprint], https://doi.org/10.5194/egusphere-2023-1308, 2023.
-#' \item Milà, C., Mateu, J., Pebesma, E., Meyer, H. (2022): Nearest Neighbour Distance Matching Leave-One-Out Cross-Validation for map validation. Methods in Ecology and Evolution 00, 1– 13.
+#' \item Linnenbrink, J., Milà, C., Ludwig, M., and Meyer, H. (2024): kNNDM: k-fold Nearest Neighbour Distance Matching Cross-Validation for map accuracy estimation, Geoscientific Model Development 17, 5897–5912, https://doi.org/10.5194/gmd-17-5897-2024
+#' \item Milà, C., Mateu, J., Pebesma, E., Meyer, H. (2022): Nearest Neighbour Distance Matching Leave-One-Out Cross-Validation for map validation. Methods in Ecology and Evolution 00, 1– 13, https://doi.org/10.1111/2041-210X.13851
 #' }
 #' @seealso \code{\link{geodist}}, \code{\link{nndm}}
 #'
@@ -137,8 +148,70 @@
 #'   geom_sf(data = simarea, alpha = 0) +
 #'   geom_sf(data = train_points, aes(col = folds))
 #'}
+#' 
 #' ########################################################################
-#' # Example 3: Real- world example; using a modeldomain instead of previously
+#' # Example 3: Simulated data - Train/test split with randomly-distributed training points
+#' ########################################################################
+#'
+#' library(sf)
+#' library(ggplot2)
+#'
+#' # Simulate 1000 random training points in a 100x100 square
+#' set.seed(1234)
+#' simarea <- list(matrix(c(0,0,0,100,100,100,100,0,0,0), ncol=2, byrow=TRUE))
+#' simarea <- sf::st_polygon(simarea)
+#' train_points <- sf::st_sample(simarea, 1000, type = "random")
+#' pred_points <- sf::st_sample(simarea, 1000, type = "regular")
+#' plot(simarea)
+#' plot(pred_points, add = TRUE, col = "blue")
+#' plot(train_points, add = TRUE, col = "red")
+#'
+#' # Use kNNDM to split the data into 30% +- 20% test and 70% train
+#' knndm_folds <- knndm(train_points, predpoints = pred_points, prop_test = 0.3, tolerance = 0.1)
+#' # How many samples have been used for testing:
+#' table(knndm_folds$clusters)
+#' plot(knndm_folds)
+#' folds <- as.character(knndm_folds$clusters)
+#' ggplot() +
+#'   geom_sf(data = simarea, alpha = 0) +
+#'   geom_sf(data = train_points, aes(col = folds))
+#' 
+#' ########################################################################
+#' # Example 4: Simulated data - Train/test split with clustered training points
+#' ########################################################################
+#' \dontrun{
+#' library(sf)
+#' library(ggplot2)
+#'
+#' # Simulate 1000 clustered training points in a 100x100 square
+#' set.seed(1234)
+#' simarea <- list(matrix(c(0,0,0,100,100,100,100,0,0,0), ncol=2, byrow=TRUE))
+#' simarea <- sf::st_polygon(simarea)
+#' train_points <- clustered_sample(simarea, 1000, 50, 5)
+#' pred_points <- sf::st_sample(simarea, 1000, type = "regular")
+#' plot(simarea)
+#' plot(pred_points, add = TRUE, col = "blue")
+#' plot(train_points, add = TRUE, col = "red")
+#'
+#' # Use kNNDM to split the data into 30% +- 20% test and 70% train
+#' knndm_folds <- knndm(train_points, predpoints = pred_points, prop_test = 0.3, tolerance = 0.1)
+#' # How many samples have been used for testing:
+#' table(knndm_folds$clusters)
+#' plot(knndm_folds)
+#' # The train/test split could not represent the prediction situation well
+#' # Increase tolerance to increase number of configurations tried, and thus to find a suitable split
+#' knndm_folds <- knndm(train_points, predpoints = pred_points, prop_test = 0.3, tolerance = 0.2)
+#' plot(knndm_folds)
+#' table(knndm_folds$clusters)
+#' # This resulted in better match of the prediction situation, but a 50/50 split
+#' folds <- as.character(knndm_folds$clusters)
+#' ggplot() +
+#'   geom_sf(data = simarea, alpha = 0) +
+#'   geom_sf(data = train_points, aes(col = folds))
+#'}
+#' 
+#' ########################################################################
+#' # Example 5: Real- world example; using a modeldomain instead of previously
 #' # sampled prediction locations
 #' ########################################################################
 #' \dontrun{
@@ -177,7 +250,7 @@
 #' global_validation(model_knndm)
 #'}
 #' ########################################################################
-#' # Example 4: Real- world example; kNNDM in feature space
+#' # Example 6: Real- world example; kNNDM in feature space
 #' ########################################################################
 #' \dontrun{
 #' library(sf)
@@ -340,14 +413,14 @@ knndm <- function(tpoints, modeldomain = NULL, predpoints = NULL,
   if(isTRUE(space == "geographical")){
 
     # prior checks
-    check_knndm_geo(tpoints, predpoints, space, k, maxp, clustering, islonglat)
+    check_knndm_geo(tpoints, predpoints, space, k, maxp, prop_test, clustering, islonglat)
     # kNNDM in geographical space
     knndm_res <- knndm_geo(tpoints, predpoints, k, maxp, prop_test, tolerance, minp, clustering, linkf, islonglat, algorithm=algorithm)
 
   } else if (isTRUE(space == "feature")) {
 
     # prior checks
-    check_knndm_feature(tpoints, predpoints, space, k, maxp, clustering, islonglat, catVars,useMD)
+    check_knndm_feature(tpoints, predpoints, space, k, maxp, prop_test, clustering, islonglat, catVars,useMD)
     # kNNDM in feature space
     knndm_res <- knndm_feature(tpoints, predpoints, k, maxp, prop_test, tolerance, minp, clustering, linkf, catVars, useMD, algorithm=algorithm)
 
@@ -359,7 +432,7 @@ knndm <- function(tpoints, modeldomain = NULL, predpoints = NULL,
 
 
 # kNNDM checks
-check_knndm_geo <- function(tpoints, predpoints, space, k, maxp, clustering, islonglat){
+check_knndm_geo <- function(tpoints, predpoints, space, k, maxp, prop_test, clustering, islonglat){
 
   if(!identical(sf::st_crs(tpoints), sf::st_crs(predpoints))){
     stop("tpoints and predpoints must have the same CRS")
@@ -381,15 +454,17 @@ check_knndm_geo <- function(tpoints, predpoints, space, k, maxp, clustering, isl
   }
   }
 
-check_knndm_feature <- function(tpoints, predpoints, space, k, maxp, clustering, islonglat, catVars, useMD){
+check_knndm_feature <- function(tpoints, predpoints, space, k, maxp, prop_test, clustering, islonglat, catVars, useMD){
 
   if(!is.null(catVars) & isTRUE(useMD)) {
     warning("Mahalanobis distances not supported for categorical features, Gower distances will be used")
     useMD <- FALSE
   }
 
-  if (!(maxp < 1 & maxp > 1/k)) {
-    stop("maxp must be strictly between 1/k and 1")
+  if(is.null(prop_test)) {
+    if (!(maxp < 1 & maxp > 1/k)) {
+      stop("maxp must be strictly between 1/k and 1")
+    }
   }
 
   if(is.null(predpoints)) {
@@ -548,8 +623,7 @@ knndm_geo <- function(tpoints, predpoints, k, maxp, prop_test, tolerance, minp, 
           clustgrid$W[clustgrid$nk==nk] <- twosamples::wass_stat(Gjstar_i, Gij)
           clustgroups[[paste0("nk", nk)]] <- clust_k
 
-        }
-
+        } 
       }
     }
 
@@ -557,6 +631,9 @@ knndm_geo <- function(tpoints, predpoints, k, maxp, prop_test, tolerance, minp, 
     k_final <- clustgrid$nk[which.min(clustgrid$W)]
     W_final <- min(clustgrid$W, na.rm=T)
     clust <- clustgroups[[paste0("nk", k_final)]]
+    if(!is.null(prop_test) && is.null(clust)) {
+      stop("No valid train/test configurations found in the range prop_test +/- tolerance. Increase tolerance.")
+    }
     if(isTRUE(islonglat)){
       Gjstar <- distclust_distmat(distmat, clust)
     }else{
@@ -565,13 +642,29 @@ knndm_geo <- function(tpoints, predpoints, k, maxp, prop_test, tolerance, minp, 
   }
 
   # Output
-  cfolds <- CAST::CreateSpacetimeFolds(data.frame(clust=clust), spacevar = "clust", k = k)
+  if(is.null(prop_test)) {
+    cfolds <- CAST::CreateSpacetimeFolds(data.frame(clust=clust), spacevar = "clust", k = k)
+  } else {
+    # Assign train/test classes
+    deviation_1 <- abs((table(clust)[[1]] / length(clust)) - prop_test)
+    deviation_2 <- abs((table(clust)[[2]] / length(clust)) - prop_test)
+    if(deviation_1 > deviation_2) {
+      test_class <- 2
+    } else {
+      test_class <- 1
+    }
+    clust[clust == test_class] <- "test"
+    clust[clust != "test"] <- "train"
+    cfolds <- list("indexOut" = which(clust == "test"), "index" = which(clust == "train"))
+  }
+
   res <- list(clusters = clust,
-              indx_train = cfolds$index, indx_test = cfolds$indexOut,
-              Gij = Gij, Gj = Gj, Gjstar = Gjstar,
-              W = W_final, method = clustering, q = k_final, space = "geographical")
+                indx_train = cfolds$index, indx_test = cfolds$indexOut,
+                Gij = Gij, Gj = Gj, Gjstar = Gjstar,
+                W = W_final, method = clustering, q = k_final, space = "geographical")
   class(res) <- c("knndm", "list")
   res
+  
 }
 
 
@@ -851,11 +944,8 @@ knndm_feature <- function(tpoints, predpoints, k, maxp, prop_test, tolerance, mi
             clustgrid$W[clustgrid$nk==nk] <- twosamples::wass_stat(Gjstar_i, Gij)
             clustgroups[[paste0("nk", nk)]] <- clust_k
 
-          }
-
-        }
-        
-        
+          } 
+        }    
       }
         
     }
@@ -864,6 +954,9 @@ knndm_feature <- function(tpoints, predpoints, k, maxp, prop_test, tolerance, mi
     k_final <- clustgrid$nk[which.min(clustgrid$W)]
     W_final <- min(clustgrid$W, na.rm=T)
     clust <- clustgroups[[paste0("nk", k_final)]]
+    if(!is.null(prop_test) && is.null(clust)) {
+      stop("No valid train/test configurations found in the range prop_test +/- tolerance. Increase tolerance.")
+    }
 
     if(clustering == "kmeans") {
       if(is.null(catVars)) {
@@ -884,11 +977,26 @@ knndm_feature <- function(tpoints, predpoints, k, maxp, prop_test, tolerance, mi
 
 
   # Output
-  cfolds <- CAST::CreateSpacetimeFolds(data.frame(clust=clust), spacevar = "clust", k = k)
+  if(is.null(prop_test)) {
+    cfolds <- CAST::CreateSpacetimeFolds(data.frame(clust=clust), spacevar = "clust", k = k)
+  } else {
+    # Assign train/test classes
+    deviation_1 <- abs((table(clust)[[1]] / length(clust)) - prop_test)
+    deviation_2 <- abs((table(clust)[[2]] / length(clust)) - prop_test)
+    if(deviation_1 > deviation_2) {
+      test_class <- 2
+    } else {
+      test_class <- 1
+    }
+    clust[clust == test_class] <- "test"
+    clust[clust != "test"] <- "train"
+    cfolds <- list("indexOut" = which(clust == "test"), "index" = which(clust == "train"))
+  }
+
   res <- list(clusters = clust,
-              indx_train = cfolds$index, indx_test = cfolds$indexOut,
-              Gij = Gij, Gj = Gj, Gjstar = Gjstar,
-              W = W_final, method = clustering, q = k_final, space = "feature")
+                indx_train = cfolds$index, indx_test = cfolds$indexOut,
+                Gij = Gij, Gj = Gj, Gjstar = Gjstar,
+                W = W_final, method = clustering, q = k_final, space = "feature")
   class(res) <- c("knndm", "list")
   res
 }
