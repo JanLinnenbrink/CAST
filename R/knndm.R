@@ -280,6 +280,7 @@ knndm <- function(tpoints, modeldomain = NULL, predpoints = NULL,
                   space = "geographical",
                   k = 10, maxp = 0.5,
                   prop_test = NULL, tolerance = NULL,
+                  nk_length = 100,
                   clustering = "hierarchical", linkf = "ward.D2",
                   samplesize = 1000, sampling = "regular", useMD=FALSE,
                   algorithm="brute"){
@@ -413,9 +414,9 @@ knndm <- function(tpoints, modeldomain = NULL, predpoints = NULL,
   if(isTRUE(space == "geographical")){
 
     # prior checks
-    check_knndm_geo(tpoints, predpoints, space, k, maxp, prop_test, clustering, islonglat)
+    check_knndm_geo(tpoints, predpoints, space, k, maxp, prop_test, nk_length, clustering, islonglat)
     # kNNDM in geographical space
-    knndm_res <- knndm_geo(tpoints, predpoints, k, maxp, prop_test, tolerance, minp, clustering, linkf, islonglat, algorithm=algorithm)
+    knndm_res <- knndm_geo(tpoints, predpoints, k, maxp, prop_test, nk_length, tolerance, minp, clustering, linkf, islonglat, algorithm=algorithm)
 
   } else if (isTRUE(space == "feature")) {
 
@@ -432,7 +433,7 @@ knndm <- function(tpoints, modeldomain = NULL, predpoints = NULL,
 
 
 # kNNDM checks
-check_knndm_geo <- function(tpoints, predpoints, space, k, maxp, prop_test, clustering, islonglat){
+check_knndm_geo <- function(tpoints, predpoints, space, k, maxp, prop_test, nk_length, clustering, islonglat){
 
   if(!identical(sf::st_crs(tpoints), sf::st_crs(predpoints))){
     stop("tpoints and predpoints must have the same CRS")
@@ -451,7 +452,7 @@ check_knndm_geo <- function(tpoints, predpoints, space, k, maxp, prop_test, clus
   if(isTRUE(islonglat) & clustering == "kmeans"){
     stop("kmeans works in the Euclidean space and therefore can only handle
          projected coordinates. Please use hierarchical clustering or project your data.")
-  }
+    }
   }
 
 check_knndm_feature <- function(tpoints, predpoints, space, k, maxp, prop_test, clustering, islonglat, catVars, useMD){
@@ -486,7 +487,7 @@ check_knndm_feature <- function(tpoints, predpoints, space, k, maxp, prop_test, 
 
 
 # kNNDM in the geographical space
-knndm_geo <- function(tpoints, predpoints, k, maxp, prop_test, tolerance, minp, clustering, linkf, islonglat, algorithm){
+knndm_geo <- function(tpoints, predpoints, k, maxp, prop_test, nk_length, tolerance, minp, clustering, linkf, islonglat, algorithm){
 
   # Gj and Gij calculation
   tcoords <- sf::st_coordinates(tpoints)[,1:2]
@@ -541,7 +542,7 @@ knndm_geo <- function(tpoints, predpoints, k, maxp, prop_test, tolerance, minp, 
 
     # Build grid of number of clusters to try - we sample low numbers more intensively
     clustgrid <- data.frame(nk = as.integer(round(exp(seq(log(k), log(nrow(tpoints)-2),
-                                                          length.out = 100)))))
+                                                          length.out = nk_length)))))
     clustgrid$W <- NA
     clustgrid <- clustgrid[!duplicated(clustgrid$nk),]
     clustgroups <- list()
