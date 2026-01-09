@@ -136,10 +136,6 @@ geodist <- function(x,
                     useMD = FALSE){
 
   # input formatting ------------
-  # Remove the following if statement? Why should the ppoints be converted to bbox?!
-  if(is.null(modeldomain)&!is.null(preddata)){
-    modeldomain <- sf::st_bbox(preddata)
-  }
   if (inherits(modeldomain, "Raster")) {
     modeldomain <- methods::as(modeldomain,"SpatRaster")
   }
@@ -162,13 +158,14 @@ geodist <- function(x,
     x <- sf::st_transform(x, sf::st_crs(modeldomain))
   }
 
-
+  # Extract coordinates of the training locations
   tcoords <- sf::st_coordinates(x)[,1:2]
 
   if(type == "feature"){
 
-    if(is.null(preddata) && !inherits(modeldomain, "SpatRaster"))
+    if(is.null(preddata) && !inherits(modeldomain, "SpatRaster")) {
       stop("Modeldomain must either be a spatRaster object or preddata must be supplied.")
+    }
     
     if(is.null(variables)){
       variables <- names(modeldomain)
@@ -217,7 +214,8 @@ geodist <- function(x,
           preddata <- na.omit(preddata)
           message("some prediction data were removed because of NA in extracted predictor values")
         }
-      }
+      } 
+      modeldomain <- preddata
     }
     # get names of categorical variables
     catVars <- names(x[,variables])[which(sapply(x[,variables], class)%in%c("factor","character"))]
@@ -249,6 +247,50 @@ geodist <- function(x,
     modeldomain <- sampleFromArea(modeldomain, samplesize, type, variables, sampling, catVars)
   } else{
     modeldomain <- preddata
+  }
+
+  # Pre-Process data for feature space distance calculation (optional)
+  if(type == "feature") {
+    x <- sf::st_drop_geometry(x)
+    modeldomain <- sf::st_drop_geometry(modeldomain)
+    testdata <- sf::st_drop_geometry(testdata)
+
+    if(!is.null(catVars)) {
+
+      # Prepare training data
+      x_cat <- x[,catVars,drop=FALSE]
+      x_num <- x[,-which(names(x)%in%catVars),drop=FALSE]
+      scaleparam <- attributes(scale(x_num))
+      x_num <- data.frame(scale(x_num))
+      x <- as.data.frame(cbind(x_num, lapply(x_cat, as.factor)))
+      x <- x[complete.cases(x),]
+
+      # Prepare modeldomain
+      modeldomain_num <- modeldomain[,-which(names(modeldomain)%in%catVars),drop=FALSE]
+      modeldomain_cat <- modeldomain[,catVars,drop=FALSE]
+      modeldomain_num <- data.frame(scale(modeldomain_num,center=scaleparam$`scaled:center`,
+                                          scale=scaleparam$`scaled:scale`))
+      modeldomain <- as.data.frame(cbind(modeldomain_num, lapply(modeldomain_cat, as.factor)))
+
+      # Prepare test data
+      testdata_num <- testdata[,-which(names(testdata)%in%catVars),drop=FALSE]
+      testdata_cat <- testdata[,catVars,drop=FALSE]
+      testdata_num <- data.frame(scale(testdata_num,center=scaleparam$`scaled:center`,
+                                          scale=scaleparam$`scaled:scale`))
+      testdata <- as.data.frame(cbind(testdata_num, lapply(testdata_cat, as.factor)))
+
+
+    } else {
+      scaleparam <- attributes(scale(x))
+      x <- data.frame(scale(x))
+      x <- x[complete.cases(x),]
+
+      modeldomain <- data.frame(scale(modeldomain,center=scaleparam$`scaled:center`,
+                                      scale=scaleparam$`scaled:scale`))
+      
+      testdata <- data.frame(scale(testdata,center=scaleparam$`scaled:center`,
+                                      scale=scaleparam$`scaled:scale`))
+    }
   }
 
   # always do sample-to-sample and sample-to-prediction
@@ -316,25 +358,10 @@ sample2sample <- function(x, type, variables, time_unit, timevar, catVars, algor
                                  what = factor("sample-to-sample"),
                                  dist_type = "geo")
   }else if(type == "feature"){
-    x <- sf::st_drop_geometry(x)
-
-    if(!is.null(catVars)) {
-      x_cat <- x[,catVars,drop=FALSE]
-      x_num <- x[,-which(names(x)%in%catVars),drop=FALSE]
-      scaleparam <- attributes(scale(x_num))
-      x_num <- data.frame(scale(x_num))
-      x <- as.data.frame(cbind(x_num, lapply(x_cat, as.factor)))
-      x_clean <- x[complete.cases(x),]
-    } else {
-      scaleparam <- attributes(scale(x))
-      x <- data.frame(scale(x))
-      x_clean <- data.frame(x[complete.cases(x),])
-    }
-
-    # sample to sample feature distance
+    
     if(is.null(catVars)) {
       if(isTRUE(useMD)) {
-        tpoints_mat <- as.matrix(x_clean)
+        tpoints_mat <- as.matrix(x)
 
         # use Mahalanobis distances
         if (dim(tpoints_mat)[2] == 1) {
@@ -346,7 +373,7 @@ sample2sample <- function(x, type, variables, time_unit, timevar, catVars, algor
         S_inv <- MASS::ginv(S)
 
         # calculate distance matrix
-        distmat <- matrix(nrow=nrow(x_clean), ncol=nrow(x_clean))
+        distmat <- matrix(nrow=nrow(x), ncol=nrow(x))
         distmat <- sapply(1:nrow(distmat), function(i) {
           sapply(1:nrow(distmat), function(j) {
             sqrt(t(tpoints_mat[i,] - tpoints_mat[j,]) %*% S_inv %*% (tpoints_mat[i,] - tpoints_mat[j,]))
@@ -356,11 +383,11 @@ sample2sample <- function(x, type, variables, time_unit, timevar, catVars, algor
 
         d <- apply(distmat, 1, min, na.rm=TRUE)
       } else {
-        d <- c(FNN::knn.dist(x_clean, k = 1, algorithm=algorithm))
+        d <- c(FNN::knn.dist(x, k = 1, algorithm=algorithm))
       }
     } else {
       # use Gower distances if categorical variables are present
-      d <- sapply(1:nrow(x_clean), function(i) gower::gower_topn(x_clean[i,], x_clean[-i,], n=1)$distance[[1]])
+      d <- sapply(1:nrow(x), function(i) gower::gower_topn(x[i,], x[-i,], n=1)$distance[[1]])
     }
 
     sampletosample <- data.frame(dist = d,
@@ -407,39 +434,12 @@ sample2prediction = function(x, modeldomain, type, samplesize, variables, time_u
                                      dist_type = "geo")
 
   }else if(type == "feature"){
-    x <- sf::st_drop_geometry(x)
-    modeldomain <- sf::st_drop_geometry(modeldomain)
-
-    if(!is.null(catVars)) {
-
-      x_cat <- x[,catVars,drop=FALSE]
-      x_num <- x[,-which(names(x)%in%catVars),drop=FALSE]
-      scaleparam <- attributes(scale(x_num))
-      x_num <- data.frame(scale(x_num))
-
-      modeldomain_num <- modeldomain[,-which(names(modeldomain)%in%catVars),drop=FALSE]
-      modeldomain_cat <- modeldomain[,catVars,drop=FALSE]
-      modeldomain_num <- data.frame(scale(modeldomain_num,center=scaleparam$`scaled:center`,
-                                          scale=scaleparam$`scaled:scale`))
-
-      x <- as.data.frame(cbind(x_num, lapply(x_cat, as.factor)))
-      x_clean <- x[complete.cases(x),]
-      modeldomain <- as.data.frame(cbind(modeldomain_num, lapply(modeldomain_cat, as.factor)))
-
-    } else {
-      scaleparam <- attributes(scale(x))
-      x <- data.frame(scale(x))
-      x_clean <- x[complete.cases(x),]
-
-      modeldomain <- data.frame(scale(modeldomain,center=scaleparam$`scaled:center`,
-                                      scale=scaleparam$`scaled:scale`))
-    }
 
     if(is.null(catVars)) {
       
       if(isTRUE(useMD)) {
 
-        tpoints_mat <- as.matrix(x_clean)
+        tpoints_mat <- as.matrix(x)
         predpoints_mat <- as.matrix(modeldomain)
 
         # use Mahalanobis distances
@@ -457,11 +457,11 @@ sample2prediction = function(x, modeldomain, type, samplesize, variables, time_u
           }))
         })
       } else {
-        target_dist_feature <- c(FNN::knnx.dist(query = modeldomain, data = x_clean, k = 1, algorithm=algorithm))
+        target_dist_feature <- c(FNN::knnx.dist(query = modeldomain, data = x, k = 1, algorithm=algorithm))
       }
 
     } else {
-      target_dist_feature <- c(gower::gower_topn(modeldomain, x_clean, n = 1)$distance)
+      target_dist_feature <- c(gower::gower_topn(modeldomain, x, n = 1)$distance)
     }
 
     sampletoprediction <- data.frame(dist = target_dist_feature,
@@ -509,39 +509,11 @@ sample2test <- function(x, testdata, type, variables, time_unit, timevar, catVar
 
   }else if(type == "feature"){
 
-    x <- sf::st_drop_geometry(x)
-    testdata <- sf::st_drop_geometry(testdata)
-
-    if(!is.null(catVars)) {
-
-      x_cat <- x[,catVars,drop=FALSE]
-      x_num <- x[,-which(names(x)%in%catVars),drop=FALSE]
-      scaleparam <- attributes(scale(x_num))
-      x_num <- data.frame(scale(x_num))
-
-      testdata_num <- testdata[,-which(names(testdata)%in%catVars),drop=FALSE]
-      testdata_cat <- testdata[,catVars,drop=FALSE]
-      testdata_num <- data.frame(scale(testdata_num,center=scaleparam$`scaled:center`,
-                                          scale=scaleparam$`scaled:scale`))
-
-      x <- as.data.frame(cbind(x_num, lapply(x_cat, as.factor)))
-      x_clean <- x[complete.cases(x),]
-      testdata <- as.data.frame(cbind(testdata_num, lapply(testdata_cat, as.factor)))
-
-    } else {
-      scaleparam <- attributes(scale(x))
-      x <- data.frame(scale(x))
-      x_clean <- x[complete.cases(x),]
-
-      testdata <- data.frame(scale(testdata,center=scaleparam$`scaled:center`,
-                                      scale=scaleparam$`scaled:scale`))
-    }
-
     if(is.null(catVars)) {
       
       if(isTRUE(useMD)) {
 
-        tpoints_mat <- as.matrix(x_clean)
+        tpoints_mat <- as.matrix(x)
         testpoints_mat <- as.matrix(testdata)
 
         # use Mahalanobis distances
@@ -559,11 +531,11 @@ sample2test <- function(x, testdata, type, variables, time_unit, timevar, catVar
           }))
         })
       } else {
-        test_dist_feature <- c(FNN::knnx.dist(query = testdata, data = x_clean, k = 1, algorithm=algorithm))
+        test_dist_feature <- c(FNN::knnx.dist(query = testdata, data = x, k = 1, algorithm=algorithm))
       }
 
     } else {
-      test_dist_feature <- c(gower::gower_topn(testdata, x_clean, n = 1)$distance)
+      test_dist_feature <- c(gower::gower_topn(testdata, x, n = 1)$distance)
     }
 
     dists_test <- data.frame(dist = test_dist_feature,
@@ -627,23 +599,23 @@ cvdistance <- function(x, cvfolds, type, variables, time_unit, timevar, catVars,
       scaleparam <- attributes(scale(x_num))
       x_num <- data.frame(scale(x_num))
       x <- as.data.frame(cbind(x_num, lapply(x_cat, as.factor)))
-      x_clean <- x[complete.cases(x),]
+      x <- x[complete.cases(x),]
     } else {
       scaleparam <- attributes(scale(x))
       x <- data.frame(scale(x))
-      x_clean <- x[complete.cases(x),]
+      x <- x[complete.cases(x),]
     }
 
     # Feature space distance calculation between CV folds
     if(is.null(catVars)) {
       if(isTRUE(useMD)) {
-        d_cv <- distclust_MD(x_clean, clust)
+        d_cv <- distclust_MD(x, clust)
       } else {
-        d_cv <- distclust_euclidean(x_clean, clust, algorithm=algorithm)
+        d_cv <- distclust_euclidean(x, clust, algorithm=algorithm)
       }
 
     } else {
-      d_cv <- distclust_gower(x_clean, clust)
+      d_cv <- distclust_gower(x, clust)
     }
 
     dists_cv <- data.frame(dist = d_cv,
