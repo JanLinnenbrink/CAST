@@ -145,14 +145,6 @@ geodist <- function(x,
     modeldomain <- methods::as(modeldomain, "SpatRaster")
   }
 
-  # Determine if a projected or geographic CRS was used based on the modeldomain
-  if(is.na(sf::st_crs(modeldomain))){
-    warning("Missing CRS in training or prediction points. Assuming projected CRS.")
-    islonglat <- FALSE
-  }else{
-    islonglat <- sf::st_is_longlat(modeldomain)
-  }
-
   # Transform the CRS of the training points to that of the modeldomain if needed
   if (!is.na(sf::st_crs(modeldomain)) && !is.na(sf::st_crs(x)) && sf::st_crs(modeldomain) != sf::st_crs(x)) {
     x <- sf::st_transform(x, sf::st_crs(modeldomain))
@@ -247,6 +239,14 @@ geodist <- function(x,
     modeldomain <- sampleFromArea(modeldomain, samplesize, type, variables, sampling, catVars)
   } else{
     modeldomain <- preddata
+  }
+
+  # Determine if a projected or geographic CRS was used based on the modeldomain
+  if(is.na(sf::st_crs(modeldomain))){
+    warning("Missing CRS in training or prediction points. Assuming projected CRS.")
+    islonglat <- FALSE
+  }else{
+    islonglat <- sf::st_is_longlat(modeldomain)
   }
 
   # Pre-Process data for feature space distance calculation (optional)
