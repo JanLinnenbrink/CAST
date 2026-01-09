@@ -4,7 +4,7 @@
 #' Optional, the nearest neighbor distances between training data and test data or between training data and CV iterations is computed.
 #' @param x object of class sf, training data locations
 #' @param modeldomain SpatRaster, stars or sf object defining the prediction area (see Details)
-#' @param type "geo" or "feature". Should the distance be computed in geographic space or in the normalized multivariate predictor space (see Details)
+#' @param space "geographical" or "feature". Should the distance be computed in geographic space or in the normalized multivariate predictor space (see Details)
 #' @param cvfolds optional. list or vector. Either a list where each element contains the data points used for testing during the cross validation iteration (i.e. held back data).
 #' Or a vector that contains the ID of the fold for each training point. See e.g. ?createFolds or ?CreateSpacetimeFolds or ?nndm
 #' @param testdata optional. object of class sf: Point data used for independent validation
@@ -13,15 +13,15 @@
 #' @param samplesize numeric. How many prediction samples should be used?
 #' @param sampling character. How to draw prediction samples? See \link[sf]{st_sample} for modeldomains that are sf objects and \link[terra]{spatSample} for raster objects.
 #' Use sampling = "Fibonacci" for global applications (only possible with sf objects).
-#' @param variables character vector defining the predictor variables used if type="feature. If not provided all variables included in modeldomain are used.
-#' @param timevar optional. character. Column that indicates the date. Only used if type="time".
-#' @param time_unit optional. Character. Unit for temporal distances See ?difftime.Only used if type="time".
+#' @param variables character vector defining the predictor variables used if space="feature". If not provided all variables included in modeldomain are used.
+#' @param timevar optional. character. Column that indicates the date. Only used if space="time".
+#' @param time_unit optional. Character. Unit for temporal distances See ?difftime.Only used if space="time".
 #' @param algorithm see \code{\link[FNN]{knnx.dist}} and \code{\link[FNN]{knnx.index}}
 #' @param useMD boolean. Only for `space`=feature: shall the Mahalanobis distance be calculated instead of Euclidean?
 #' Only works with numerical variables.
 #' @return A data.frame containing the distances. Unit of returned geographic distances is meters. attributes contain W statistic between prediction area and either sample data, CV folds or test data. See details.
 #' @details The modeldomain is a sf polygon or a raster that defines the prediction area. The function takes a regular point sample (amount defined by samplesize) from the spatial extent.
-#'     If type = "feature", the argument modeldomain (and if provided then also the testdata and/or preddata) has to include predictors. Predictor values for x, testdata and preddata are optional if modeldomain is a raster.
+#'     If space = "feature", the argument modeldomain (and if provided then also the testdata and/or preddata) has to include predictors. Predictor values for x, testdata and preddata are optional if modeldomain is a raster.
 #'     If not provided they are extracted from the modeldomain rasterStack. If some predictors are categorical (i.e., of class factor or character), gower distances will be used.
 #'     W statistic describes the match between the distributions. See Linnenbrink et al (2023) for further details.
 #' @note See Meyer and Pebesma (2022) for an application of this plotting function
@@ -65,14 +65,14 @@
 #' predictors <- terra::rast(system.file("extdata","predictors_chile.tif", package="CAST"))
 #' dist <- geodist(x = splotdata,
 #'                 modeldomain = predictors,
-#'                 type = "feature",
+#'                 space = "feature",
 #'                 variables = c("bio_1","bio_12", "elev"))
 #' plot(dist)
 #'
 #' dist <- geodist(x = splotdata[splotdata$Country != "Chile",],
 #'                 modeldomain = predictors, cvfolds = folds,
 #'                 testdata = splotdata[splotdata$Country == "Chile",],
-#'                 type = "feature",
+#'                 space = "feature",
 #'                 variables=c("bio_1","bio_12", "elev"))
 #' plot(dist)
 #'
@@ -88,7 +88,7 @@
 #' cvfolds <- CreateSpacetimeFolds(trainDat,timevar = "week")
 #'
 #' dist <- geodist(trainDat,preddata = predictionDat,cvfolds = cvfolds$indexOut,
-#'    type="time",time_unit="days")
+#'    space="time",time_unit="days")
 #' plot(dist)+ xlim(0,10)
 #'
 #'
@@ -123,7 +123,7 @@
 
 geodist <- function(x,
                     modeldomain=NULL,
-                    type = "geo",
+                    space = "geographical",
                     cvfolds=NULL,
                     testdata=NULL,
                     preddata=NULL,
@@ -136,6 +136,11 @@ geodist <- function(x,
                     useMD = FALSE){
 
   # input formatting ------------
+  if(space == "geo") space <- "geographical"
+  if(!space %in% c("geographical", "feature")) {
+    stop("Space must bei one of 'geographical' or 'feature'")
+  }
+
   if (inherits(modeldomain, "Raster")) {
     modeldomain <- methods::as(modeldomain,"SpatRaster")
   }
@@ -153,7 +158,7 @@ geodist <- function(x,
   # Extract coordinates of the training locations
   tcoords <- sf::st_coordinates(x)[,1:2]
 
-  if(type == "feature"){
+  if(space == "feature"){
 
     if(is.null(preddata) && !inherits(modeldomain, "SpatRaster")) {
       stop("Modeldomain must either be a spatRaster object or preddata must be supplied.")
@@ -218,14 +223,14 @@ geodist <- function(x,
       message(paste0("variable(s) '", catVars, "' is (are) treated as categorical variables"))
     }
   }
-  if(type != "feature") {
+  if(space != "feature") {
     catVars <- NULL
   }
-  if (type=="time" & is.null(timevar)){
+  if (space=="time" & is.null(timevar)){
     timevar <- names(which(sapply(x, lubridate::is.Date)))
     message("time variable that has been selected: ",timevar)
   }
-  if (type=="time"&time_unit=="auto"){
+  if (space=="time"&time_unit=="auto"){
     time_unit <- units(difftime(sf::st_drop_geometry(x)[,timevar],
                                 sf::st_drop_geometry(x)[,timevar]))
   }
@@ -236,7 +241,7 @@ geodist <- function(x,
 
   ## Sample prediction location from the study area if preddata not available:
   if(is.null(preddata)){
-    modeldomain <- sampleFromArea(modeldomain, samplesize, type, variables, sampling, catVars)
+    modeldomain <- sampleFromArea(modeldomain, samplesize, space, variables, sampling, catVars)
   } else{
     modeldomain <- preddata
   }
@@ -250,7 +255,7 @@ geodist <- function(x,
   }
 
   # Pre-Process data for feature space distance calculation (optional)
-  if(type == "feature") {
+  if(space == "feature") {
     x <- sf::st_drop_geometry(x)
     modeldomain <- sf::st_drop_geometry(modeldomain)
     testdata <- sf::st_drop_geometry(testdata)
@@ -294,28 +299,28 @@ geodist <- function(x,
   }
 
   # always do sample-to-sample and sample-to-prediction
-  s2s <- sample2sample(x, type,variables,time_unit,timevar, catVars, algorithm=algorithm, useMD = useMD, islonglat=islonglat, tcoords=tcoords)
-  s2p <- sample2prediction(x, modeldomain, type, samplesize,variables,time_unit,timevar, catVars, algorithm=algorithm, useMD = useMD, islonglat=islonglat, tcoords=tcoords)
+  s2s <- sample2sample(x, space,variables,time_unit,timevar, catVars, algorithm=algorithm, useMD = useMD, islonglat=islonglat, tcoords=tcoords)
+  s2p <- sample2prediction(x, modeldomain, space, samplesize,variables,time_unit,timevar, catVars, algorithm=algorithm, useMD = useMD, islonglat=islonglat, tcoords=tcoords)
 
   dists <- rbind(s2s, s2p)
 
   # optional steps ----
   ##### Distance to test data:
   if(!is.null(testdata)){
-    s2t <- sample2test(x, testdata, type,variables,time_unit,timevar, catVars, algorithm=algorithm, useMD = useMD, islonglat=islonglat, tcoords=tcoords)
+    s2t <- sample2test(x, testdata, space,variables,time_unit,timevar, catVars, algorithm=algorithm, useMD = useMD, islonglat=islonglat, tcoords=tcoords)
     dists <- rbind(dists, s2t)
   }
 
   ##### Distance to CV data:
   if(!is.null(cvfolds)){
 
-    cvd <- cvdistance(x, cvfolds, type, variables,time_unit, timevar, catVars, algorithm=algorithm, useMD = useMD, islonglat=islonglat, tcoords=tcoords)
+    cvd <- cvdistance(x, cvfolds, space, variables,time_unit, timevar, catVars, algorithm=algorithm, useMD = useMD, islonglat=islonglat, tcoords=tcoords)
     dists <- rbind(dists, cvd)
   }
   class(dists) <- c("geodist", class(dists))
-  attr(dists, "type") <- type
+  attr(dists, "space") <- space
 
-  if(type=="time"){
+  if(space=="time"){
     attr(dists, "unit") <- time_unit
   }
 
@@ -342,8 +347,8 @@ geodist <- function(x,
 
 
 # Sample to Sample Distance
-sample2sample <- function(x, type, variables, time_unit, timevar, catVars, algorithm, useMD, islonglat, tcoords){
-  if(type == "geo"){
+sample2sample <- function(x, space, variables, time_unit, timevar, catVars, algorithm, useMD, islonglat, tcoords){
+  if(space == "geographical"){
 
     if(isTRUE(islonglat)){
       distmat <- sf::st_distance(x)
@@ -356,8 +361,8 @@ sample2sample <- function(x, type, variables, time_unit, timevar, catVars, algor
 
     sampletosample <- data.frame(dist = min_d,
                                  what = factor("sample-to-sample"),
-                                 dist_type = "geo")
-  }else if(type == "feature"){
+                                 dist_type = "geographical")
+  }else if(space == "feature"){
     
     if(is.null(catVars)) {
       if(isTRUE(useMD)) {
@@ -394,7 +399,7 @@ sample2sample <- function(x, type, variables, time_unit, timevar, catVars, algor
                                  what = factor("sample-to-sample"),
                                  dist_type = "feature")
 
-  }else if(type == "time"){ # calculate temporal distance matrix
+  }else if(space == "time"){ # calculate temporal distance matrix
     d <- matrix(ncol=nrow(x),nrow=nrow(x))
     for (i in 1:nrow(x)){
       d[i,] <- abs(difftime(sf::st_drop_geometry(x)[,timevar],
@@ -412,9 +417,9 @@ sample2sample <- function(x, type, variables, time_unit, timevar, catVars, algor
 
 
 # Sample to Prediction
-sample2prediction = function(x, modeldomain, type, samplesize, variables, time_unit, timevar, catVars, algorithm, useMD, islonglat, tcoords){
+sample2prediction = function(x, modeldomain, space, samplesize, variables, time_unit, timevar, catVars, algorithm, useMD, islonglat, tcoords){
 
-  if(type == "geo"){
+  if(space == "geographical"){
 
     # ensure that prediction_points and training points have the same CRS
     modeldomain <- sf::st_transform(modeldomain, sf::st_crs(x))
@@ -431,9 +436,9 @@ sample2prediction = function(x, modeldomain, type, samplesize, variables, time_u
 
     sampletoprediction <- data.frame(dist = min_d0,
                                      what = factor("prediction-to-sample"),
-                                     dist_type = "geo")
+                                     dist_type = "geographical")
 
-  }else if(type == "feature"){
+  }else if(space == "feature"){
 
     if(is.null(catVars)) {
       
@@ -467,7 +472,7 @@ sample2prediction = function(x, modeldomain, type, samplesize, variables, time_u
     sampletoprediction <- data.frame(dist = target_dist_feature,
                                      what = "prediction-to-sample",
                                      dist_type = "feature")
-  }else if(type == "time"){
+  }else if(space == "time"){
 
     min_d0 <- c()
     for (i in 1:nrow(modeldomain)){
@@ -487,9 +492,9 @@ sample2prediction = function(x, modeldomain, type, samplesize, variables, time_u
 
 
 # sample to test
-sample2test <- function(x, testdata, type, variables, time_unit, timevar, catVars, algorithm, useMD, islonglat, tcoords){
+sample2test <- function(x, testdata, space, variables, time_unit, timevar, catVars, algorithm, useMD, islonglat, tcoords){
 
-  if(type == "geo"){
+  if(space == "geographical"){
     testdata <- sf::st_transform(testdata, sf::st_crs(x))
 
     # calculate the NNDs between test points and training points
@@ -504,10 +509,10 @@ sample2test <- function(x, testdata, type, variables, time_unit, timevar, catVar
   
    dists_test <- data.frame(dist = min_d_test,
                              what = factor("test-to-sample"),
-                             dist_type = "geo")
+                             dist_type = "geographical")
 
 
-  }else if(type == "feature"){
+  }else if(space == "feature"){
 
     if(is.null(catVars)) {
       
@@ -541,7 +546,7 @@ sample2test <- function(x, testdata, type, variables, time_unit, timevar, catVar
     dists_test <- data.frame(dist = test_dist_feature,
                              what = "test-to-sample",
                              dist_type = "feature")
-  }else if (type=="time"){
+  }else if (space=="time"){
     min_d0 <- c()
     for (i in 1:nrow(testdata)){
       min_d0[i] <- min(abs(difftime(sf::st_drop_geometry(testdata)[i,timevar],
@@ -562,7 +567,7 @@ sample2test <- function(x, testdata, type, variables, time_unit, timevar, catVar
 
 
 # between folds
-cvdistance <- function(x, cvfolds, type, variables, time_unit, timevar, catVars, algorithm, useMD, islonglat, tcoords){
+cvdistance <- function(x, cvfolds, space, variables, time_unit, timevar, catVars, algorithm, useMD, islonglat, tcoords){
 
   # Convert cvfold list to vector
   if(!is.null(cvfolds)&is.list(cvfolds)){
@@ -574,7 +579,7 @@ cvdistance <- function(x, cvfolds, type, variables, time_unit, timevar, catVars,
     }
   }
 
-  if(type == "geo"){
+  if(space == "geographical"){
 
     if(isTRUE(islonglat)){
       distmat <- sf::st_distance(x)
@@ -587,10 +592,10 @@ cvdistance <- function(x, cvfolds, type, variables, time_unit, timevar, catVars,
 
     dists_cv <- data.frame(dist = d_cv,
                            what = factor("CV-distances"),
-                           dist_type = "geo")
+                           dist_type = "geographical")
 
 
-  }else if(type == "feature"){
+  }else if(space == "feature"){
     x <- sf::st_drop_geometry(x)
 
     if(!is.null(catVars)) {
@@ -622,7 +627,7 @@ cvdistance <- function(x, cvfolds, type, variables, time_unit, timevar, catVars,
                            what = factor("CV-distances"),
                            dist_type = "feature")
 
-  }else if(type == "time"){
+  }else if(space == "time"){
     d_cv <- c()
     d_cv_tmp <- c()
     for (i in 1:length(cvfolds)){
@@ -649,14 +654,14 @@ cvdistance <- function(x, cvfolds, type, variables, time_unit, timevar, catVars,
 
 
 
-sampleFromArea <- function(modeldomain, samplesize, type, variables, sampling, catVars){
+sampleFromArea <- function(modeldomain, samplesize, space, variables, sampling, catVars){
 
   # Samples prediction points from the prediction area
   if(inherits(modeldomain, "Raster")){
     modeldomain <- terra::rast(modeldomain)
   }
 
-  if(type == "geo")  {
+  if(space == "geographical")  {
     if(inherits(modeldomain, "SpatRaster")) {
         if(samplesize>terra::ncell(modeldomain)){
           samplesize <- terra::ncell(modeldomain)
@@ -679,7 +684,7 @@ sampleFromArea <- function(modeldomain, samplesize, type, variables, sampling, c
       }
   }
 
-  if(type == "feature"){
+  if(space == "feature"){
 
     predictionloc <- terra::spatSample(modeldomain, size = samplesize, method = sampling, as.points = TRUE, na.rm = TRUE, values = TRUE) |> 
           sf::st_as_sf()
