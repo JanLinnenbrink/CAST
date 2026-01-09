@@ -188,31 +188,16 @@ geodist <- function(x,
         # extract variable values of raster:
         testdata <- sf::st_transform(testdata,sf::st_crs(modeldomain))
         testdata <- sf::st_as_sf(terra::extract(modeldomain, terra::vect(testdata), na.rm=FALSE, bind=TRUE))
-
-        if(any(is.na(testdata))){
-          testdata <- na.omit(testdata)
-          message("some test data were removed because of NA in extracted predictor values")
-        }
       }
-
       testdata <- testdata[,variables]
-      if(any(is.na(testdata))){
-          testdata <- na.omit(testdata)
-          message("some test data were removed because of NA in extracted predictor values")
-      }
     }
     if(!is.null(preddata)){
       if(any(!variables%in%names(preddata))){
         # extract variable values of raster:
         preddata <- sf::st_transform(preddata, sf::st_crs(modeldomain))
         preddata <- sf::st_as_sf(terra::extract(modeldomain, terra::vect(preddata), na.rm=FALSE, bind=TRUE))
-
-        if(any(is.na(preddata))){
-          preddata <- na.omit(preddata)
-          message("some prediction data were removed because of NA in extracted predictor values")
-        }
       } 
-      modeldomain <- preddata
+      preddata <- preddata[,variables]
     }
     # get names of categorical variables
     catVars <- names(x[,variables])[which(sapply(x[,variables], class)%in%c("factor","character"))]
@@ -258,10 +243,12 @@ geodist <- function(x,
   if(space == "feature") {
     x <- sf::st_drop_geometry(x)
     modeldomain <- sf::st_drop_geometry(modeldomain)
-    testdata <- sf::st_drop_geometry(testdata)
+
+    if(!is.null(testdata)) {
+      testdata <- sf::st_drop_geometry(testdata)
+    }
 
     if(!is.null(catVars)) {
-
       # Prepare training data
       x_cat <- x[,catVars,drop=FALSE]
       x_num <- x[,-which(names(x)%in%catVars),drop=FALSE]
@@ -276,15 +263,17 @@ geodist <- function(x,
       modeldomain_num <- data.frame(scale(modeldomain_num,center=scaleparam$`scaled:center`,
                                           scale=scaleparam$`scaled:scale`))
       modeldomain <- as.data.frame(cbind(modeldomain_num, lapply(modeldomain_cat, as.factor)))
+      modeldomain <- modeldomain[complete.cases(modeldomain),]
 
-      # Prepare test data
-      testdata_num <- testdata[,-which(names(testdata)%in%catVars),drop=FALSE]
-      testdata_cat <- testdata[,catVars,drop=FALSE]
-      testdata_num <- data.frame(scale(testdata_num,center=scaleparam$`scaled:center`,
-                                          scale=scaleparam$`scaled:scale`))
-      testdata <- as.data.frame(cbind(testdata_num, lapply(testdata_cat, as.factor)))
-
-
+      if(!is.null(testdata)) {
+        testdata_num <- testdata[,-which(names(testdata)%in%catVars),drop=FALSE]
+        testdata_cat <- testdata[,catVars,drop=FALSE]
+        testdata_num <- data.frame(scale(testdata_num,center=scaleparam$`scaled:center`,
+                                            scale=scaleparam$`scaled:scale`))
+        testdata <- as.data.frame(cbind(testdata_num, lapply(testdata_cat, as.factor)))
+        testdata <- testdata[complete.cases(testdata),]
+      }
+      
     } else {
       scaleparam <- attributes(scale(x))
       x <- data.frame(scale(x))
@@ -292,9 +281,14 @@ geodist <- function(x,
 
       modeldomain <- data.frame(scale(modeldomain,center=scaleparam$`scaled:center`,
                                       scale=scaleparam$`scaled:scale`))
-      
-      testdata <- data.frame(scale(testdata,center=scaleparam$`scaled:center`,
+      modeldomain <- modeldomain[complete.cases(modeldomain),]
+
+      if(!is.null(testdata)) {
+        testdata <- data.frame(scale(testdata,center=scaleparam$`scaled:center`,
                                       scale=scaleparam$`scaled:scale`))
+        testdata <- testdata[complete.cases(testdata),]
+      }
+      
     }
   }
 
@@ -314,7 +308,7 @@ geodist <- function(x,
   ##### Distance to CV data:
   if(!is.null(cvfolds)){
 
-    cvd <- cvdistance(x, cvfolds, space, variables,time_unit, timevar, catVars, algorithm=algorithm, useMD = useMD, islonglat=islonglat, tcoords=tcoords)
+    cvd <- cvdistance(x, cvfolds, space, variables, time_unit, timevar, catVars, algorithm=algorithm, useMD = useMD, islonglat=islonglat, tcoords=tcoords)
     dists <- rbind(dists, cvd)
   }
   class(dists) <- c("geodist", class(dists))
@@ -568,15 +562,17 @@ sample2test <- function(x, testdata, space, variables, time_unit, timevar, catVa
 
 # between folds
 cvdistance <- function(x, cvfolds, space, variables, time_unit, timevar, catVars, algorithm, useMD, islonglat, tcoords){
-
+  
   # Convert cvfold list to vector
-  if(!is.null(cvfolds)&is.list(cvfolds)){
+  if(is.list(cvfolds)){
     n <- max(unlist(cvfolds))
     clust <- integer(n)
 
     for (k in seq_along(cvfolds)) {
       clust[cvfolds[[k]]] <- k
     }
+  } else {
+    clust <- cvfolds
   }
 
   if(space == "geographical"){
@@ -596,22 +592,7 @@ cvdistance <- function(x, cvfolds, space, variables, time_unit, timevar, catVars
 
 
   }else if(space == "feature"){
-    x <- sf::st_drop_geometry(x)
 
-    if(!is.null(catVars)) {
-      x_cat <- x[,catVars,drop=FALSE]
-      x_num <- x[,-which(names(x)%in%catVars),drop=FALSE]
-      scaleparam <- attributes(scale(x_num))
-      x_num <- data.frame(scale(x_num))
-      x <- as.data.frame(cbind(x_num, lapply(x_cat, as.factor)))
-      x <- x[complete.cases(x),]
-    } else {
-      scaleparam <- attributes(scale(x))
-      x <- data.frame(scale(x))
-      x <- x[complete.cases(x),]
-    }
-
-    # Feature space distance calculation between CV folds
     if(is.null(catVars)) {
       if(isTRUE(useMD)) {
         d_cv <- distclust_MD(x, clust)
@@ -648,7 +629,7 @@ cvdistance <- function(x, cvfolds, space, variables, time_unit, timevar, catVars
   }
 
   return(dists_cv)
-  }
+}
 
 
 
@@ -686,6 +667,7 @@ sampleFromArea <- function(modeldomain, samplesize, space, variables, sampling, 
 
   if(space == "feature"){
 
+    message(paste0("Sampling ", samplesize, " prediction locations from the modeldomain raster and extracting values from it."))
     predictionloc <- terra::spatSample(modeldomain, size = samplesize, method = sampling, as.points = TRUE, na.rm = TRUE, values = TRUE) |> 
           sf::st_as_sf()
   }
