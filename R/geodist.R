@@ -7,7 +7,6 @@
 #' @param type "geo" or "feature". Should the distance be computed in geographic space or in the normalized multivariate predictor space (see Details)
 #' @param cvfolds optional. list or vector. Either a list where each element contains the data points used for testing during the cross validation iteration (i.e. held back data).
 #' Or a vector that contains the ID of the fold for each training point. See e.g. ?createFolds or ?CreateSpacetimeFolds or ?nndm
-#' @param cvtrain optional. List of row indices of x to fit the model to in each CV iteration. If cvtrain is null but cvfolds is not, all samples but those included in cvfolds are used as training data
 #' @param testdata optional. object of class sf: Point data used for independent validation
 #' @param preddata optional. object of class sf: Point data indicating the locations within the modeldomain to be used as target prediction points. Useful when the prediction objective is a subset of
 #' locations within the modeldomain rather than the whole area.
@@ -18,6 +17,8 @@
 #' @param timevar optional. character. Column that indicates the date. Only used if type="time".
 #' @param time_unit optional. Character. Unit for temporal distances See ?difftime.Only used if type="time".
 #' @param algorithm see \code{\link[FNN]{knnx.dist}} and \code{\link[FNN]{knnx.index}}
+#' @param useMD boolean. Only for `space`=feature: shall the Mahalanobis distance be calculated instead of Euclidean?
+#' Only works with numerical variables.
 #' @return A data.frame containing the distances. Unit of returned geographic distances is meters. attributes contain W statistic between prediction area and either sample data, CV folds or test data. See details.
 #' @details The modeldomain is a sf polygon or a raster that defines the prediction area. The function takes a regular point sample (amount defined by samplesize) from the spatial extent.
 #'     If type = "feature", the argument modeldomain (and if provided then also the testdata and/or preddata) has to include predictors. Predictor values for x, testdata and preddata are optional if modeldomain is a raster.
@@ -124,7 +125,6 @@ geodist <- function(x,
                     modeldomain=NULL,
                     type = "geo",
                     cvfolds=NULL,
-                    cvtrain=NULL,
                     testdata=NULL,
                     preddata=NULL,
                     samplesize=2000,
@@ -132,9 +132,11 @@ geodist <- function(x,
                     variables=NULL,
                     timevar=NULL,
                     time_unit="auto",
-                    algorithm="brute"){
+                    algorithm="brute",
+                    useMD = FALSE){
 
   # input formatting ------------
+  # Remove the following if statement? Why should the ppoints be converted to bbox?!
   if(is.null(modeldomain)&!is.null(preddata)){
     modeldomain <- sf::st_bbox(preddata)
   }
@@ -147,54 +149,74 @@ geodist <- function(x,
     modeldomain <- methods::as(modeldomain, "SpatRaster")
   }
 
-  if(is.na(sf::st_crs(x))){
+  # Determine if a projected or geographic CRS was used based on the modeldomain
+  if(is.na(sf::st_crs(modeldomain))){
     warning("Missing CRS in training or prediction points. Assuming projected CRS.")
     islonglat <- FALSE
   }else{
-    islonglat <- sf::st_is_longlat(x)
+    islonglat <- sf::st_is_longlat(modeldomain)
   }
+
+  # Transform the CRS of the training points to that of the modeldomain if needed
+  if (!is.na(sf::st_crs(modeldomain)) && !is.na(sf::st_crs(x)) && sf::st_crs(modeldomain) != sf::st_crs(x)) {
+    x <- sf::st_transform(x, sf::st_crs(modeldomain))
+  }
+
 
   tcoords <- sf::st_coordinates(x)[,1:2]
 
-
   if(type == "feature"){
+
+    if(is.null(preddata) && !inherits(modeldomain, "SpatRaster"))
+      stop("Modeldomain must either be a spatRaster object or preddata must be supplied.")
+    
     if(is.null(variables)){
       variables <- names(modeldomain)
     }
+    
     if(any(!variables%in%names(x))){ # extract variable values of raster:
       message("features are extracted from the modeldomain")
-      x <- sf::st_transform(x,sf::st_crs(modeldomain))
-
       if(class(x)[1]=="sfc_POINT"){
         x <- sf::st_as_sf(x)
       }
-      x <- sf::st_as_sf(terra::extract(modeldomain, terra::vect(x), na.rm=FALSE,bind=TRUE))
+      x <- sf::st_as_sf(terra::extract(modeldomain, terra::vect(x), na.rm=FALSE, bind=TRUE))
     }
-    x <- sf::st_transform(x,4326)
+
+    # subset x and modeldomain/preddata to include only the needed predictor values
+    x <- x[,variables]
+
+    if(inherits(modeldomain, "SpatRaster")) {
+      modeldomain <- modeldomain[[variables]]
+    }
+  
     if(!is.null(testdata)){
-      if(any(!variables%in%names(testdata))){# extract variable values of raster:
+      if(any(!variables%in%names(testdata))){
+        # extract variable values of raster:
         testdata <- sf::st_transform(testdata,sf::st_crs(modeldomain))
-        testdata <- sf::st_as_sf(terra::extract(modeldomain, terra::vect(testdata), na.rm=FALSE,bind=TRUE))
+        testdata <- sf::st_as_sf(terra::extract(modeldomain, terra::vect(testdata), na.rm=FALSE, bind=TRUE))
 
         if(any(is.na(testdata))){
           testdata <- na.omit(testdata)
           message("some test data were removed because of NA in extracted predictor values")
         }
+      }
 
-        testdata <- sf::st_transform(testdata,4326)
+      testdata <- testdata[,variables]
+      if(any(is.na(testdata))){
+          testdata <- na.omit(testdata)
+          message("some test data were removed because of NA in extracted predictor values")
       }
     }
     if(!is.null(preddata)){
-      if(any(!variables%in%names(preddata))){# extract variable values of raster:
-        preddata <- sf::st_transform(preddata,sf::st_crs(modeldomain))
-        preddata <- sf::st_as_sf(terra::extract(modeldomain, terra::vect(preddata), na.rm=FALSE,bind=TRUE))
+      if(any(!variables%in%names(preddata))){
+        # extract variable values of raster:
+        preddata <- sf::st_transform(preddata, sf::st_crs(modeldomain))
+        preddata <- sf::st_as_sf(terra::extract(modeldomain, terra::vect(preddata), na.rm=FALSE, bind=TRUE))
 
         if(any(is.na(preddata))){
           preddata <- na.omit(preddata)
           message("some prediction data were removed because of NA in extracted predictor values")
         }
-
-        preddata <- sf::st_transform(preddata,4326)
       }
     }
     # get names of categorical variables
@@ -230,22 +252,22 @@ geodist <- function(x,
   }
 
   # always do sample-to-sample and sample-to-prediction
-  s2s <- sample2sample(x, type,variables,time_unit,timevar, catVars, algorithm=algorithm, islonglat=islonglat, tcoords=tcoords)
-  s2p <- sample2prediction(x, modeldomain, type, samplesize,variables,time_unit,timevar, catVars, algorithm=algorithm, islonglat=islonglat, tcoords=tcoords)
+  s2s <- sample2sample(x, type,variables,time_unit,timevar, catVars, algorithm=algorithm, useMD = useMD, islonglat=islonglat, tcoords=tcoords)
+  s2p <- sample2prediction(x, modeldomain, type, samplesize,variables,time_unit,timevar, catVars, algorithm=algorithm, useMD = useMD, islonglat=islonglat, tcoords=tcoords)
 
   dists <- rbind(s2s, s2p)
 
   # optional steps ----
   ##### Distance to test data:
   if(!is.null(testdata)){
-    s2t <- sample2test(x, testdata, type,variables,time_unit,timevar, catVars, algorithm=algorithm, islonglat=islonglat, tcoords=tcoords)
+    s2t <- sample2test(x, testdata, type,variables,time_unit,timevar, catVars, algorithm=algorithm, useMD = useMD, islonglat=islonglat, tcoords=tcoords)
     dists <- rbind(dists, s2t)
   }
 
   ##### Distance to CV data:
   if(!is.null(cvfolds)){
 
-    cvd <- cvdistance(x, cvfolds, cvtrain, type, variables,time_unit,timevar, catVars, algorithm=algorithm, islonglat=islonglat, tcoords=tcoords)
+    cvd <- cvdistance(x, cvfolds, type, variables,time_unit, timevar, catVars, algorithm=algorithm, useMD = useMD, islonglat=islonglat, tcoords=tcoords)
     dists <- rbind(dists, cvd)
   }
   class(dists) <- c("geodist", class(dists))
@@ -278,7 +300,7 @@ geodist <- function(x,
 
 
 # Sample to Sample Distance
-sample2sample <- function(x, type, variables, time_unit, timevar, catVars, algorithm, islonglat, tcoords){
+sample2sample <- function(x, type, variables, time_unit, timevar, catVars, algorithm, useMD, islonglat, tcoords){
   if(type == "geo"){
 
     if(isTRUE(islonglat)){
@@ -294,7 +316,6 @@ sample2sample <- function(x, type, variables, time_unit, timevar, catVars, algor
                                  what = factor("sample-to-sample"),
                                  dist_type = "geo")
   }else if(type == "feature"){
-    x <- x[,variables]
     x <- sf::st_drop_geometry(x)
 
     if(!is.null(catVars)) {
@@ -311,18 +332,37 @@ sample2sample <- function(x, type, variables, time_unit, timevar, catVars, algor
     }
 
     # sample to sample feature distance
-    d <- c()
-    for (i in 1:nrow(x_clean)){
+    if(is.null(catVars)) {
+      if(isTRUE(useMD)) {
+        tpoints_mat <- as.matrix(x_clean)
 
-      if(is.null(catVars)) {
-        trainDist <-  FNN::knnx.dist(x_clean[i,],x_clean,k=1, algorithm=algorithm)
+        # use Mahalanobis distances
+        if (dim(tpoints_mat)[2] == 1) {
+          S <- matrix(stats::var(tpoints_mat), 1, 1)
+          tpoints_mat <- as.matrix(tpoints_mat, ncol = 1)
+        } else {
+          S <- stats::cov(tpoints_mat)
+        }
+        S_inv <- MASS::ginv(S)
+
+        # calculate distance matrix
+        distmat <- matrix(nrow=nrow(x_clean), ncol=nrow(x_clean))
+        distmat <- sapply(1:nrow(distmat), function(i) {
+          sapply(1:nrow(distmat), function(j) {
+            sqrt(t(tpoints_mat[i,] - tpoints_mat[j,]) %*% S_inv %*% (tpoints_mat[i,] - tpoints_mat[j,]))
+          })
+        })
+        diag(distmat) <- NA
+
+        d <- apply(distmat, 1, min, na.rm=TRUE)
       } else {
-        trainDist <- gower::gower_dist(x_clean[i,],x_clean)
+        d <- c(FNN::knn.dist(x_clean, k = 1, algorithm=algorithm))
       }
-
-      trainDist[i] <- NA
-      d <- c(d,min(trainDist,na.rm=T))
+    } else {
+      # use Gower distances if categorical variables are present
+      d <- sapply(1:nrow(x_clean), function(i) gower::gower_topn(x_clean[i,], x_clean[-i,], n=1)$distance[[1]])
     }
+
     sampletosample <- data.frame(dist = d,
                                  what = factor("sample-to-sample"),
                                  dist_type = "feature")
@@ -345,7 +385,7 @@ sample2sample <- function(x, type, variables, time_unit, timevar, catVars, algor
 
 
 # Sample to Prediction
-sample2prediction = function(x, modeldomain, type, samplesize, variables, time_unit, timevar, catVars, algorithm, islonglat, tcoords){
+sample2prediction = function(x, modeldomain, type, samplesize, variables, time_unit, timevar, catVars, algorithm, useMD, islonglat, tcoords){
 
   if(type == "geo"){
 
@@ -367,9 +407,7 @@ sample2prediction = function(x, modeldomain, type, samplesize, variables, time_u
                                      dist_type = "geo")
 
   }else if(type == "feature"){
-    x <- x[,variables]
     x <- sf::st_drop_geometry(x)
-    modeldomain <- modeldomain[,variables]
     modeldomain <- sf::st_drop_geometry(modeldomain)
 
     if(!is.null(catVars)) {
@@ -397,18 +435,35 @@ sample2prediction = function(x, modeldomain, type, samplesize, variables, time_u
                                       scale=scaleparam$`scaled:scale`))
     }
 
+    if(is.null(catVars)) {
+      
+      if(isTRUE(useMD)) {
 
-    target_dist_feature <- c()
-    for (i in 1:nrow(modeldomain)){
+        tpoints_mat <- as.matrix(x_clean)
+        predpoints_mat <- as.matrix(modeldomain)
 
-      if(is.null(catVars)) {
-        trainDist <-  FNN::knnx.dist(modeldomain[i,],x_clean,k=1, algorithm=algorithm)
+        # use Mahalanobis distances
+        if (dim(tpoints_mat)[2] == 1) {
+          S <- matrix(stats::var(tpoints_mat), 1, 1)
+          tpoints_mat <- as.matrix(tpoints_mat, ncol = 1)
+        } else {
+          S <- stats::cov(tpoints_mat)
+        }
+        S_inv <- MASS::ginv(S)
+
+        target_dist_feature <- sapply(1:dim(predpoints_mat)[1], function(y) {
+          min(sapply(1:dim(tpoints_mat)[1], function(x) {
+            sqrt(t(predpoints_mat[y,] - tpoints_mat[x,]) %*% S_inv %*% (predpoints_mat[y,] - tpoints_mat[x,]))
+          }))
+        })
       } else {
-        trainDist <- gower::gower_dist(modeldomain[i,], x_clean)
+        target_dist_feature <- c(FNN::knnx.dist(query = modeldomain, data = x_clean, k = 1, algorithm=algorithm))
       }
 
-      target_dist_feature <- c(target_dist_feature,min(trainDist,na.rm=T))
+    } else {
+      target_dist_feature <- c(gower::gower_topn(modeldomain, x_clean, n = 1)$distance)
     }
+
     sampletoprediction <- data.frame(dist = target_dist_feature,
                                      what = "prediction-to-sample",
                                      dist_type = "feature")
@@ -432,7 +487,7 @@ sample2prediction = function(x, modeldomain, type, samplesize, variables, time_u
 
 
 # sample to test
-sample2test <- function(x, testdata, type, variables, time_unit, timevar, catVars, algorithm, islonglat, tcoords){
+sample2test <- function(x, testdata, type, variables, time_unit, timevar, catVars, algorithm, useMD, islonglat, tcoords){
 
   if(type == "geo"){
     testdata <- sf::st_transform(testdata, sf::st_crs(x))
@@ -454,10 +509,7 @@ sample2test <- function(x, testdata, type, variables, time_unit, timevar, catVar
 
   }else if(type == "feature"){
 
-
-    x <- x[,variables]
     x <- sf::st_drop_geometry(x)
-    testdata <- testdata[,variables]
     testdata <- sf::st_drop_geometry(testdata)
 
     if(!is.null(catVars)) {
@@ -470,7 +522,7 @@ sample2test <- function(x, testdata, type, variables, time_unit, timevar, catVar
       testdata_num <- testdata[,-which(names(testdata)%in%catVars),drop=FALSE]
       testdata_cat <- testdata[,catVars,drop=FALSE]
       testdata_num <- data.frame(scale(testdata_num,center=scaleparam$`scaled:center`,
-                                       scale=scaleparam$`scaled:scale`))
+                                          scale=scaleparam$`scaled:scale`))
 
       x <- as.data.frame(cbind(x_num, lapply(x_cat, as.factor)))
       x_clean <- x[complete.cases(x),]
@@ -482,20 +534,38 @@ sample2test <- function(x, testdata, type, variables, time_unit, timevar, catVar
       x_clean <- x[complete.cases(x),]
 
       testdata <- data.frame(scale(testdata,center=scaleparam$`scaled:center`,
-                                   scale=scaleparam$`scaled:scale`))
+                                      scale=scaleparam$`scaled:scale`))
     }
 
+    if(is.null(catVars)) {
+      
+      if(isTRUE(useMD)) {
 
-    test_dist_feature <- c()
-    for (i in 1:nrow(testdata)){
+        tpoints_mat <- as.matrix(x_clean)
+        testpoints_mat <- as.matrix(testdata)
 
-      if(is.null(catVars)) {
-        testDist <- FNN::knnx.dist(testdata[i,],x_clean,k=1, algorithm=algorithm)
+        # use Mahalanobis distances
+        if (dim(tpoints_mat)[2] == 1) {
+          S <- matrix(stats::var(tpoints_mat), 1, 1)
+          tpoints_mat <- as.matrix(tpoints_mat, ncol = 1)
+        } else {
+          S <- stats::cov(tpoints_mat)
+        }
+        S_inv <- MASS::ginv(S)
+
+        test_dist_feature <- sapply(1:dim(testpoints_mat)[1], function(y) {
+          min(sapply(1:dim(tpoints_mat)[1], function(x) {
+            sqrt(t(testpoints_mat[y,] - tpoints_mat[x,]) %*% S_inv %*% (testpoints_mat[y,] - tpoints_mat[x,]))
+          }))
+        })
       } else {
-        testDist <- gower::gower_dist(testdata[i,], x_clean)
+        test_dist_feature <- c(FNN::knnx.dist(query = testdata, data = x_clean, k = 1, algorithm=algorithm))
       }
-      test_dist_feature <- c(test_dist_feature,min(testDist,na.rm=T))
+
+    } else {
+      test_dist_feature <- c(gower::gower_topn(testdata, x_clean, n = 1)$distance)
     }
+
     dists_test <- data.frame(dist = test_dist_feature,
                              what = "test-to-sample",
                              dist_type = "feature")
@@ -520,9 +590,7 @@ sample2test <- function(x, testdata, type, variables, time_unit, timevar, catVar
 
 
 # between folds
-cvdistance <- function(x, cvfolds, cvtrain, type, variables, time_unit, timevar, catVars, algorithm, islonglat, tcoords){
-
-  ## Maybe REMOVE CVTRAIN later (adjust feature space and time first)
+cvdistance <- function(x, cvfolds, type, variables, time_unit, timevar, catVars, algorithm, useMD, islonglat, tcoords){
 
   # Convert cvfold list to vector
   if(!is.null(cvfolds)&is.list(cvfolds)){
@@ -533,7 +601,6 @@ cvdistance <- function(x, cvfolds, cvtrain, type, variables, time_unit, timevar,
       clust[cvfolds[[k]]] <- k
     }
   }
-
 
   if(type == "geo"){
 
@@ -552,57 +619,31 @@ cvdistance <- function(x, cvfolds, cvtrain, type, variables, time_unit, timevar,
 
 
   }else if(type == "feature"){
-    x <- x[,variables]
     x <- sf::st_drop_geometry(x)
 
-    if(is.null(catVars)) {
-      x <- data.frame(scale(x))
-    } else {
+    if(!is.null(catVars)) {
       x_cat <- x[,catVars,drop=FALSE]
       x_num <- x[,-which(names(x)%in%catVars),drop=FALSE]
       scaleparam <- attributes(scale(x_num))
       x_num <- data.frame(scale(x_num))
       x <- as.data.frame(cbind(x_num, lapply(x_cat, as.factor)))
+      x_clean <- x[complete.cases(x),]
+    } else {
+      scaleparam <- attributes(scale(x))
+      x <- data.frame(scale(x))
+      x_clean <- x[complete.cases(x),]
     }
 
-    d_cv <- c()
-    for(i in 1:length(cvfolds)){
-
-      if(!is.null(cvtrain)){
-        testdata_i <- x[cvfolds[[i]],]
-        traindata_i <- x[cvtrain[[i]],]
-      }else{
-        testdata_i <- x[cvfolds[[i]],]
-        traindata_i <- x[-cvfolds[[i]],]
+    # Feature space distance calculation between CV folds
+    if(is.null(catVars)) {
+      if(isTRUE(useMD)) {
+        d_cv <- distclust_MD(x_clean, clust)
+      } else {
+        d_cv <- distclust_euclidean(x_clean, clust, algorithm=algorithm)
       }
 
-      testdata_i <- testdata_i[complete.cases(testdata_i),]
-      traindata_i <- traindata_i[complete.cases(traindata_i),]
-
-      for (k in 1:nrow(testdata_i)){
-
-        if(is.null(catVars)) {
-          trainDist <-  tryCatch(FNN::knnx.dist(testdata_i[k,],traindata_i,k=1, algorithm=algorithm),
-                                 error = function(e)e)
-          if(inherits(trainDist, "error")){
-            trainDist <- NA
-            message("warning: no distance could be calculated for a fold.
-                  Possibly because predictor values are NA")
-          }
-        } else {
-          trainDist <-  tryCatch(gower::gower_dist(testdata_i[i,], traindata_i),
-                                 error = function(e)e)
-          if(inherits(trainDist, "error")){
-            trainDist <- NA
-            message("warning: no distance could be calculated for a fold.
-                  Possibly because predictor values are NA")
-          }
-        }
-
-
-        trainDist[k] <- NA
-        d_cv <- c(d_cv,min(trainDist,na.rm=T))
-      }
+    } else {
+      d_cv <- distclust_gower(x_clean, clust)
     }
 
     dists_cv <- data.frame(dist = d_cv,
@@ -613,19 +654,12 @@ cvdistance <- function(x, cvfolds, cvtrain, type, variables, time_unit, timevar,
     d_cv <- c()
     d_cv_tmp <- c()
     for (i in 1:length(cvfolds)){
-      if(!is.null(cvtrain)){
-        for (k in 1:length(cvfolds[[i]])){
-          d_cv_tmp[k] <- min(abs(difftime(sf::st_drop_geometry(x)[cvfolds[[i]][k],timevar],
-                                          sf::st_drop_geometry(x)[cvtrain[[i]],timevar],
-                                          units=time_unit)))
-        }
-      }else{
-        for (k in 1:length(cvfolds[[i]])){
-          d_cv_tmp[k] <- min(abs(difftime(sf::st_drop_geometry(x)[cvfolds[[i]][k],timevar],
-                                          sf::st_drop_geometry(x)[-cvfolds[[i]],timevar],
-                                          units=time_unit)))
-        }
+      for (k in 1:length(cvfolds[[i]])){
+        d_cv_tmp[k] <- min(abs(difftime(sf::st_drop_geometry(x)[cvfolds[[i]][k],timevar],
+                                        sf::st_drop_geometry(x)[-cvfolds[[i]],timevar],
+                                        units=time_unit)))
       }
+      
       d_cv <- c(d_cv,d_cv_tmp)
     }
 
@@ -650,36 +684,33 @@ sampleFromArea <- function(modeldomain, samplesize, type, variables, sampling, c
     modeldomain <- terra::rast(modeldomain)
   }
 
-  if(inherits(modeldomain, "SpatRaster")) {
-    if(samplesize>terra::ncell(modeldomain)){
-      samplesize <- terra::ncell(modeldomain)
-      message(paste0("samplesize for new data shouldn't be larger than number of pixels.
-              Samplesize was reduced to ",terra::ncell(modeldomain)))
-    }
-    #create mask to sample from:
-    template <- modeldomain[[1]]
-    template <- terra::classify(template, cbind(-Inf, Inf, 1), right=FALSE)
-    # draw samples using terra
-    predictionloc <- terra::spatSample(template, size = samplesize, method = sampling, as.points = TRUE, na.rm = TRUE) |> 
-      sf::st_as_sf()
+  if(type == "geo")  {
+    if(inherits(modeldomain, "SpatRaster")) {
+        if(samplesize>terra::ncell(modeldomain)){
+          samplesize <- terra::ncell(modeldomain)
+          message(paste0("samplesize for new data shouldn't be larger than number of pixels.
+                  Samplesize was reduced to ",terra::ncell(modeldomain)))
+        }
+        #create mask to sample from:
+        template <- modeldomain[[1]]
+        template <- terra::classify(template, cbind(-Inf, Inf, 1), right=FALSE)
+        # draw samples using terra
+        message(paste0("Sampling ", samplesize, " prediction locations from the modeldomain raster."))
+        predictionloc <- terra::spatSample(template, size = samplesize, method = sampling, as.points = TRUE, na.rm = TRUE, values = FALSE) |> 
+          sf::st_as_sf()
 
-  }else{
-    # sample prediction locations from sf vector objects
-    message(paste0(samplesize, " prediction points are sampled from the modeldomain"))
-    predictionloc <- sf::st_sample(x = modeldomain, size = samplesize, type = sampling) |> 
-      sf::st_set_crs(sf::st_crs(modeldomain))
+      }else{
+        # sample prediction locations from sf vector objects
+        message(paste0("Sampling ", samplesize, " prediction locations from the modeldomain vector."))
+        predictionloc <- sf::st_sample(x = modeldomain, size = samplesize, type = sampling) |> 
+          sf::st_set_crs(sf::st_crs(modeldomain))
+      }
   }
 
   if(type == "feature"){
 
-    if(is.null(catVars)) {
-      modeldomain <- terra::project(modeldomain, "epsg:4326")
-    } else {
-      modeldomain <- terra::project(modeldomain, "epsg:4326", method="near")
-    }
-
-    predictionloc <- sf::st_as_sf(terra::extract(modeldomain,terra::vect(predictionloc),bind=TRUE))
-    predictionloc <- na.omit(predictionloc)
+    predictionloc <- terra::spatSample(modeldomain, size = samplesize, method = sampling, as.points = TRUE, na.rm = TRUE, values = TRUE) |> 
+          sf::st_as_sf()
   }
 
   return(predictionloc)
