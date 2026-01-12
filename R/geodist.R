@@ -137,8 +137,8 @@ geodist <- function(x,
 
   # input formatting ------------
   if(space == "geo") space <- "geographical"
-  if(!space %in% c("geographical", "feature")) {
-    stop("Space must bei one of 'geographical' or 'feature'")
+  if(!space %in% c("geographical", "feature", "time")) {
+    stop("Space must bei one of 'geographical', 'feature' or 'time'")
   }
 
   if (inherits(modeldomain, "Raster")) {
@@ -150,9 +150,21 @@ geodist <- function(x,
     modeldomain <- methods::as(modeldomain, "SpatRaster")
   }
 
-  # Transform the CRS of the training points to that of the modeldomain if needed
-  if (!is.na(sf::st_crs(modeldomain)) && !is.na(sf::st_crs(x)) && sf::st_crs(modeldomain) != sf::st_crs(x)) {
+  # Transform the CRS of the training points to that of the modeldomain (or preddata) if needed
+  if (is.null(preddata) && !is.na(sf::st_crs(modeldomain)) && !is.na(sf::st_crs(x)) && sf::st_crs(modeldomain) != sf::st_crs(x)) {
+    message("Transforms the training data to the CRS of the modeldomain")
     x <- sf::st_transform(x, sf::st_crs(modeldomain))
+  }
+
+  if (!is.null(preddata) && !is.na(sf::st_crs(preddata)) && !is.na(sf::st_crs(x)) && sf::st_crs(preddata) != sf::st_crs(x)) {
+    message("Transforms the training data to the CRS of the preddata")
+    x <- sf::st_transform(x, sf::st_crs(preddata))
+  }
+
+  # Transform the CRS of the test points to that of the training data (which already equals that of the modeldomain/preddata)
+  if (!is.null(testdata) && !is.na(sf::st_crs(testdata)) && !is.na(sf::st_crs(x)) && sf::st_crs(testdata) != sf::st_crs(x)) {
+    message("Transforms the test data to the CRS of the modeldomain")
+    testdata <- sf::st_transform(testdata, sf::st_crs(x))
   }
 
   # Extract coordinates of the training locations
@@ -186,7 +198,6 @@ geodist <- function(x,
     if(!is.null(testdata)){
       if(any(!variables%in%names(testdata))){
         # extract variable values of raster:
-        testdata <- sf::st_transform(testdata,sf::st_crs(modeldomain))
         testdata <- sf::st_as_sf(terra::extract(modeldomain, terra::vect(testdata), na.rm=FALSE, bind=TRUE))
       }
       testdata <- testdata[,variables]
@@ -194,7 +205,6 @@ geodist <- function(x,
     if(!is.null(preddata)){
       if(any(!variables%in%names(preddata))){
         # extract variable values of raster:
-        preddata <- sf::st_transform(preddata, sf::st_crs(modeldomain))
         preddata <- sf::st_as_sf(terra::extract(modeldomain, terra::vect(preddata), na.rm=FALSE, bind=TRUE))
       } 
       preddata <- preddata[,variables]
@@ -233,7 +243,7 @@ geodist <- function(x,
 
   # Determine if a projected or geographic CRS was used based on the modeldomain
   if(is.na(sf::st_crs(modeldomain))){
-    warning("Missing CRS in training or prediction points. Assuming projected CRS.")
+    warning("Missing CRS of the modeldomain or prediction points. Assuming projected CRS.")
     islonglat <- FALSE
   }else{
     islonglat <- sf::st_is_longlat(modeldomain)
@@ -307,7 +317,6 @@ geodist <- function(x,
 
   ##### Distance to CV data:
   if(!is.null(cvfolds)){
-
     cvd <- cvdistance(x, cvfolds, space, variables, time_unit, timevar, catVars, algorithm=algorithm, useMD = useMD, islonglat=islonglat, tcoords=tcoords)
     dists <- rbind(dists, cvd)
   }
@@ -415,9 +424,6 @@ sample2prediction = function(x, modeldomain, space, samplesize, variables, time_
 
   if(space == "geographical"){
 
-    # ensure that prediction_points and training points have the same CRS
-    modeldomain <- sf::st_transform(modeldomain, sf::st_crs(x))
-
     # calculate the NNDs between prediction points and training points
     if(isTRUE(islonglat)){
       d0 <- sf::st_distance(modeldomain, x)
@@ -489,7 +495,6 @@ sample2prediction = function(x, modeldomain, space, samplesize, variables, time_
 sample2test <- function(x, testdata, space, variables, time_unit, timevar, catVars, algorithm, useMD, islonglat, tcoords){
 
   if(space == "geographical"){
-    testdata <- sf::st_transform(testdata, sf::st_crs(x))
 
     # calculate the NNDs between test points and training points
     if(isTRUE(islonglat)){
