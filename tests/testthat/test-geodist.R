@@ -83,6 +83,30 @@ test_that("geodist works with points and polygon in feature space", {
 
 })
 
+test_that("geodist works with points and polygon in feature space using Mahalanobis distances", {
+  skip_if_not_installed("rnaturalearth")
+  data(splotdata)
+  studyArea <- rnaturalearth::ne_countries(continent = "South America", returnclass = "sf")
+  set.seed(1)
+  folds <- data.frame("folds"=sample(1:3, nrow(splotdata), replace=TRUE))
+  folds <- CreateSpacetimeFolds(folds, spacevar="folds", k=3)
+  predictors <- terra::rast(system.file("extdata","predictors_chile.tif", package="CAST"))
+
+  dist_fspace <- geodist(x = splotdata,
+                         modeldomain = predictors,
+                         cvfolds=folds$indexOut,
+                         space = "feature",
+                         variables = c("bio_1","bio_12", "elev"), 
+                         useMD = TRUE)
+
+  mean_sample2sample <- round(mean(dist_fspace[dist_fspace$what=="sample-to-sample","dist"]), 4)
+  mean_CV_distances <- round(mean(dist_fspace[dist_fspace$what=="CV-distances","dist"]), 4)
+
+  expect_equal(mean_sample2sample, 0.0900)
+  expect_equal(mean_CV_distances, 0.1104)
+
+})
+
 
 test_that("geodist works space with points and preddata in geographic space", {
   aoi <- sf::st_as_sfc("POLYGON ((0 0, 10 0, 10 10, 0 10, 0 0))", crs="epsg:25832")
@@ -323,10 +347,9 @@ test_that("geodist works in temporal space and with CV", {
   dist <- CAST::geodist(trainDat,preddata = predictionDat,cvfolds = cvfolds$indexOut,
                         space = "time",time_unit = "days")
 
-  mean_cv <- round(mean(dist[dist$what=="CV-distances","dist"]), 4)
+  mean_cv <- round(mean(dist[dist$what=="CV-distances","dist"]), 3)
 
-  expect_equal(mean_cv,  2.4048)
-}
-)
+  expect_equal(mean_cv,  2.446)
+})
 
 

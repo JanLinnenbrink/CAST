@@ -120,236 +120,220 @@
 #'
 #'}
 #' @export
+geodist <- function(
+  x,
+  modeldomain = NULL,
+  space = "geographical",
+  cvfolds = NULL,
+  testdata = NULL,
+  preddata = NULL,
+  samplesize = 2000,
+  sampling = "regular",
+  variables = NULL,
+  timevar = NULL,
+  time_unit = "auto",
+  algorithm = "brute",
+  useMD = FALSE
+){
 
-geodist <- function(x,
-                    modeldomain=NULL,
-                    space = "geographical",
-                    cvfolds=NULL,
-                    testdata=NULL,
-                    preddata=NULL,
-                    samplesize=2000,
-                    sampling = "regular",
-                    variables=NULL,
-                    timevar=NULL,
-                    time_unit="auto",
-                    algorithm="brute",
-                    useMD = FALSE){
+  # 1. Input validation & normalization ----------
 
-  # input formatting ------------
-  if(space == "geo") space <- "geographical"
-  if(!space %in% c("geographical", "feature", "time")) {
-    stop("Space must bei one of 'geographical', 'feature' or 'time'")
+  # Check that space was correctly defined
+  if (space == "geo") space <- "geographical"
+  if (!space %in% c("geographical", "feature", "time")) {
+    stop("Space must be one of 'geographical', 'feature' or 'time'")
   }
 
+  # Check for different raster formats
   if (inherits(modeldomain, "Raster")) {
-    modeldomain <- methods::as(modeldomain,"SpatRaster")
+    modeldomain <- terra::rast(modeldomain)
   }
   if (inherits(modeldomain, "stars")) {
-    if (!requireNamespace("stars", quietly = TRUE))
-      stop("package stars required: install that first")
     modeldomain <- methods::as(modeldomain, "SpatRaster")
   }
 
-  # Transform the CRS of the training points to that of the modeldomain (or preddata) if needed
-  if (is.null(preddata) && !is.na(sf::st_crs(modeldomain)) && !is.na(sf::st_crs(x)) && sf::st_crs(modeldomain) != sf::st_crs(x)) {
-    message("Transforms the training data to the CRS of the modeldomain")
-    x <- sf::st_transform(x, sf::st_crs(modeldomain))
+  # Check for time variable and unit
+  if (space == "time") {
+    if (is.null(timevar)) {
+      timevar <- names(which(sapply(x, lubridate::is.Date)))
+      message("time variable selected: ", timevar)
+    }
+    if (time_unit == "auto") {
+      time_unit <- units(difftime(
+        sf::st_drop_geometry(x)[, timevar],
+        sf::st_drop_geometry(x)[, timevar]
+      ))
+    }
   }
 
-  if (!is.null(preddata) && !is.na(sf::st_crs(preddata)) && !is.na(sf::st_crs(x)) && sf::st_crs(preddata) != sf::st_crs(x)) {
-    message("Transforms the training data to the CRS of the preddata")
-    x <- sf::st_transform(x, sf::st_crs(preddata))
+
+  # 2. CRS harmonization ----------
+
+  # Retrieve the CRS of preddata (or modeldomain) and use it as a reference
+  ref_crs <- if (!is.null(preddata)) {
+    sf::st_crs(preddata)
+  } else if (!is.null(modeldomain) && inherits(modeldomain, "sf")) {
+    sf::st_crs(modeldomain)
+  } else {
+    sf::st_crs(x)
   }
 
-  # Transform the CRS of the test points to that of the training data (which already equals that of the modeldomain/preddata)
-  if (!is.null(testdata) && !is.na(sf::st_crs(testdata)) && !is.na(sf::st_crs(x)) && sf::st_crs(testdata) != sf::st_crs(x)) {
-    message("Transforms the test data to the CRS of the modeldomain")
+  # transform training points to the CRS of preddata (or modeldomain)
+  if (!is.na(ref_crs) && !is.na(sf::st_crs(x)) && sf::st_crs(x) != ref_crs) {
+    message("Transforming training data CRS")
+    x <- sf::st_transform(x, ref_crs)
+  }
+
+  # transform test points to the CRS of preddata (or modeldomain)
+  if (!is.null(testdata) &&
+      !is.na(sf::st_crs(testdata)) &&
+      !is.na(sf::st_crs(x)) &&
+      sf::st_crs(testdata) != sf::st_crs(x)) {
+    message("Transforming test data CRS")
     testdata <- sf::st_transform(testdata, sf::st_crs(x))
   }
 
-  # Extract coordinates of the training locations
-  tcoords <- sf::st_coordinates(x)[,1:2]
-
-  if(space == "feature"){
-
-    if(is.null(preddata) && !inherits(modeldomain, "SpatRaster")) {
-      stop("Modeldomain must either be a spatRaster object or preddata must be supplied.")
-    }
-    
-    if(is.null(variables)){
-      variables <- names(modeldomain)
-    }
-    
-    if(any(!variables%in%names(x))){ # extract variable values of raster:
-      message("features are extracted from the modeldomain")
-      if(class(x)[1]=="sfc_POINT"){
-        x <- sf::st_as_sf(x)
-      }
-      x <- sf::st_as_sf(terra::extract(modeldomain, terra::vect(x), na.rm=FALSE, bind=TRUE))
-    }
-
-    # subset x and modeldomain/preddata to include only the needed predictor values
-    x <- x[,variables]
-
-    if(inherits(modeldomain, "SpatRaster")) {
-      modeldomain <- modeldomain[[variables]]
-    }
-  
-    if(!is.null(testdata)){
-      if(any(!variables%in%names(testdata))){
-        # extract variable values of raster:
-        testdata <- sf::st_as_sf(terra::extract(modeldomain, terra::vect(testdata), na.rm=FALSE, bind=TRUE))
-      }
-      testdata <- testdata[,variables]
-    }
-    if(!is.null(preddata)){
-      if(any(!variables%in%names(preddata))){
-        # extract variable values of raster:
-        preddata <- sf::st_as_sf(terra::extract(modeldomain, terra::vect(preddata), na.rm=FALSE, bind=TRUE))
-      } 
-      preddata <- preddata[,variables]
-    }
-    # get names of categorical variables
-    catVars <- names(x[,variables])[which(sapply(x[,variables], class)%in%c("factor","character"))]
-    if(length(catVars)==0) {
-      catVars <- NULL
-    }
-    if(!is.null(catVars)) {
-      message(paste0("variable(s) '", catVars, "' is (are) treated as categorical variables"))
-    }
-  }
-  if(space != "feature") {
-    catVars <- NULL
-  }
-  if (space=="time" & is.null(timevar)){
-    timevar <- names(which(sapply(x, lubridate::is.Date)))
-    message("time variable that has been selected: ",timevar)
-  }
-  if (space=="time"&time_unit=="auto"){
-    time_unit <- units(difftime(sf::st_drop_geometry(x)[,timevar],
-                                sf::st_drop_geometry(x)[,timevar]))
-  }
-
-
-
-  # required steps ----
-
-  ## Sample prediction location from the study area if preddata not available:
-  if(is.null(preddata)){
-    modeldomain <- sampleFromArea(modeldomain, samplesize, space, variables, sampling, catVars)
-  } else{
-    modeldomain <- preddata
-  }
-
-  # Determine if a projected or geographic CRS was used based on the modeldomain
-  if(is.na(sf::st_crs(modeldomain))){
+  # Check if coordinates are longitutude/latitude
+  islonglat <- if (is.na(ref_crs)) {
     warning("Missing CRS of the modeldomain or prediction points. Assuming projected CRS.")
-    islonglat <- FALSE
-  }else{
-    islonglat <- sf::st_is_longlat(modeldomain)
+    FALSE
+  } else {
+    sf::st_is_longlat(ref_crs)
   }
 
-  # Pre-Process data for feature space distance calculation (optional)
-  if(space == "feature") {
-    x <- sf::st_drop_geometry(x)
-    modeldomain <- sf::st_drop_geometry(modeldomain)
+  # extract the coordinates of the training points
+  tcoords <- sf::st_coordinates(x)[, 1:2]
 
-    if(!is.null(testdata)) {
-      testdata <- sf::st_drop_geometry(testdata)
+
+  # 3. Prediction point generation ----------
+
+  # Sample prediction points from the study area (only if no preddata are supplied)
+  pred_points <- if (is.null(preddata)) {
+    sampleFromArea(modeldomain, samplesize, space, variables, sampling)
+  } else {
+    preddata
+  }
+
+
+  # 4. Feature-space preparation (if needed) ----------
+
+  catVars <- NULL
+
+  if (space == "feature") {
+
+    if (is.null(preddata) && !inherits(modeldomain, "SpatRaster")) {
+      stop("For feature space, modeldomain must be a SpatRaster or preddata must be supplied.")
     }
 
-    if(!is.null(catVars)) {
-      # Prepare training data
-      x_cat <- x[,catVars,drop=FALSE]
-      x_num <- x[,-which(names(x)%in%catVars),drop=FALSE]
-      scaleparam <- attributes(scale(x_num))
-      x_num <- data.frame(scale(x_num))
-      x <- as.data.frame(cbind(x_num, lapply(x_cat, as.factor)))
-      x <- x[complete.cases(x),]
+    # If no variable names are given, retrieve them from the preddata or modeldomain (the latter is preferred)
+    if (is.null(variables) && !is.null(modeldomain)) {
+       variables <- names(modeldomain)
+    } else if (is.null(variables) && !is.null(preddata) && is.null(modeldomain)) {
+       variables <- names(preddata)
+    }
 
-      # Prepare modeldomain
-      modeldomain_num <- modeldomain[,-which(names(modeldomain)%in%catVars),drop=FALSE]
-      modeldomain_cat <- modeldomain[,catVars,drop=FALSE]
-      modeldomain_num <- data.frame(scale(modeldomain_num,center=scaleparam$`scaled:center`,
-                                          scale=scaleparam$`scaled:scale`))
-      modeldomain <- as.data.frame(cbind(modeldomain_num, lapply(modeldomain_cat, as.factor)))
-      modeldomain <- modeldomain[complete.cases(modeldomain),]
+    # Extract predictor values from the modeldomain if they are not attached
+    if (any(!variables %in% names(x))) {
+      message("Extracting predictors from modeldomain")
+      x <- sf::st_as_sf(terra::extract(modeldomain, terra::vect(x), bind = TRUE))
+    }
+    x <- x[, variables]
 
-      if(!is.null(testdata)) {
-        testdata_num <- testdata[,-which(names(testdata)%in%catVars),drop=FALSE]
-        testdata_cat <- testdata[,catVars,drop=FALSE]
-        testdata_num <- data.frame(scale(testdata_num,center=scaleparam$`scaled:center`,
-                                            scale=scaleparam$`scaled:scale`))
-        testdata <- as.data.frame(cbind(testdata_num, lapply(testdata_cat, as.factor)))
-        testdata <- testdata[complete.cases(testdata),]
-      }
-      
-    } else {
+    if (!is.null(testdata) && any(!variables %in% names(testdata))) {
+      testdata <- sf::st_as_sf(terra::extract(modeldomain, terra::vect(testdata), bind = TRUE))
+    }
+    if (!is.null(testdata)) testdata <- testdata[, variables]
+
+    if (any(!variables %in% names(pred_points))) {
+      pred_points <- sf::st_as_sf(terra::extract(modeldomain, terra::vect(pred_points), bind = TRUE))
+    }
+    pred_points <- pred_points[, variables]
+
+    # Detect categorical variables
+    catVars <- names(x)[sapply(x, function(z) inherits(z, c("factor", "character")))]
+    if (length(catVars) == 0) catVars <- NULL
+
+    # Drop the geometry of the training and prediction (and test) points
+    x <- sf::st_drop_geometry(x)
+    pred_points <- sf::st_drop_geometry(pred_points)
+    if (!is.null(testdata)) testdata <- sf::st_drop_geometry(testdata)
+
+    # Scale the training, prediction and test points
+    if (is.null(catVars)) {
       scaleparam <- attributes(scale(x))
       x <- data.frame(scale(x))
-      x <- x[complete.cases(x),]
-
-      modeldomain <- data.frame(scale(modeldomain,center=scaleparam$`scaled:center`,
-                                      scale=scaleparam$`scaled:scale`))
-      modeldomain <- modeldomain[complete.cases(modeldomain),]
-
-      if(!is.null(testdata)) {
-        testdata <- data.frame(scale(testdata,center=scaleparam$`scaled:center`,
-                                      scale=scaleparam$`scaled:scale`))
-        testdata <- testdata[complete.cases(testdata),]
+      pred_points <- data.frame(scale(pred_points,
+                                      center = scaleparam$`scaled:center`,
+                                      scale = scaleparam$`scaled:scale`))
+      if (!is.null(testdata)) {
+        testdata <- data.frame(scale(testdata,
+                                     center = scaleparam$`scaled:center`,
+                                     scale = scaleparam$`scaled:scale`))
       }
-      
     }
   }
 
-  # always do sample-to-sample and sample-to-prediction
-  s2s <- sample2sample(x, space,variables,time_unit,timevar, catVars, algorithm=algorithm, useMD = useMD, islonglat=islonglat, tcoords=tcoords)
-  s2p <- sample2prediction(x, modeldomain, space, samplesize,variables,time_unit,timevar, catVars, algorithm=algorithm, useMD = useMD, islonglat=islonglat, tcoords=tcoords)
 
-  dists <- rbind(s2s, s2p)
+  # 5. Distance computation ----------
 
-  # optional steps ----
-  ##### Distance to test data:
-  if(!is.null(testdata)){
-    s2t <- sample2test(x, testdata, space,variables,time_unit,timevar, catVars, algorithm=algorithm, useMD = useMD, islonglat=islonglat, tcoords=tcoords)
-    dists <- rbind(dists, s2t)
+  # Calculate NNDs between training points
+  s2s <- sample2sample(
+    x, space, variables, time_unit, timevar,
+    catVars, algorithm, useMD, islonglat, tcoords
+  )
+
+  # Calculate NNDs between prediction and training points
+  p2s <- prediction2sample(
+    x, pred_points, space, samplesize, variables,
+    time_unit, timevar, catVars, algorithm, useMD, islonglat, tcoords
+  )
+
+  dists <- rbind(s2s, p2s)
+
+  # Calculate NNDs between test points and training points
+  if (!is.null(testdata)) {
+    dists <- rbind(dists, test2sample(x, testdata, space, variables, time_unit, timevar, catVars, algorithm, useMD, islonglat, tcoords))
   }
 
-  ##### Distance to CV data:
-  if(!is.null(cvfolds)){
-    cvd <- cvdistance(x, cvfolds, space, variables, time_unit, timevar, catVars, algorithm=algorithm, useMD = useMD, islonglat=islonglat, tcoords=tcoords)
-    dists <- rbind(dists, cvd)
+  # Calculate NNDs between CV folds
+  if (!is.null(cvfolds)) {
+    dists <- rbind(dists, cvdistance(x, cvfolds, space, variables, time_unit, timevar, catVars, algorithm, useMD, islonglat, tcoords))
   }
+
+
+  # 6. Post-processing ----------
+
   class(dists) <- c("geodist", class(dists))
   attr(dists, "space") <- space
+  if (space == "time") attr(dists, "unit") <- time_unit
 
-  if(space=="time"){
-    attr(dists, "unit") <- time_unit
+  attr(dists, "W_sample") <- twosamples::wass_stat(
+    dists[dists$what == "sample-to-sample", "dist"],
+    dists[dists$what == "prediction-to-sample", "dist"]
+  )
+
+  if (!is.null(testdata)) {
+    attr(dists, "W_test") <- twosamples::wass_stat(
+      dists[dists$what == "test-to-sample", "dist"],
+      dists[dists$what == "prediction-to-sample", "dist"]
+    )
   }
 
-
-  ##### Compute W statistics
-  W_sample <- twosamples::wass_stat(dists[dists$what == "sample-to-sample", "dist"],
-                                    dists[dists$what == "prediction-to-sample", "dist"])
-  attr(dists, "W_sample") <- W_sample
-  if(!is.null(testdata)){
-    W_test <- twosamples::wass_stat(dists[dists$what == "test-to-sample", "dist"],
-                                    dists[dists$what == "prediction-to-sample", "dist"])
-    attr(dists, "W_test") <- W_test
-  }
-  if(!is.null(cvfolds)){
-    W_CV <- twosamples::wass_stat(dists[dists$what == "CV-distances", "dist"],
-                                  dists[dists$what == "prediction-to-sample", "dist"])
-    attr(dists, "W_CV") <- W_CV
+  if (!is.null(cvfolds)) {
+    attr(dists, "W_CV") <- twosamples::wass_stat(
+      dists[dists$what == "CV-distances", "dist"],
+      dists[dists$what == "prediction-to-sample", "dist"]
+    )
   }
 
-  return(dists)
+  dists
 }
 
 
 
+## Function definitions ----------
 
-# Sample to Sample Distance
+# Sample to sample distance calculation
 sample2sample <- function(x, space, variables, time_unit, timevar, catVars, algorithm, useMD, islonglat, tcoords){
   if(space == "geographical"){
 
@@ -403,12 +387,8 @@ sample2sample <- function(x, space, variables, time_unit, timevar, catVars, algo
                                  dist_type = "feature")
 
   }else if(space == "time"){ # calculate temporal distance matrix
-    d <- matrix(ncol=nrow(x),nrow=nrow(x))
-    for (i in 1:nrow(x)){
-      d[i,] <- abs(difftime(sf::st_drop_geometry(x)[,timevar],
-                            sf::st_drop_geometry(x)[i,timevar],
-                            units=time_unit))
-    }
+    time_values <- sf::st_drop_geometry(x)[, timevar]
+    d <- abs(outer(time_values, time_values, FUN=function(a,b) as.numeric(difftime(a,b,units=time_unit))))
     diag(d) <- Inf
     min_d <- apply(d, 1, min)
     sampletosample <- data.frame(dist = min_d,
@@ -419,8 +399,8 @@ sample2sample <- function(x, space, variables, time_unit, timevar, catVars, algo
 }
 
 
-# Sample to Prediction
-sample2prediction = function(x, modeldomain, space, samplesize, variables, time_unit, timevar, catVars, algorithm, useMD, islonglat, tcoords){
+# Prediction to sample distance calculation
+prediction2sample = function(x, modeldomain, space, samplesize, variables, time_unit, timevar, catVars, algorithm, useMD, islonglat, tcoords){
 
   if(space == "geographical"){
 
@@ -474,12 +454,10 @@ sample2prediction = function(x, modeldomain, space, samplesize, variables, time_
                                      dist_type = "feature")
   }else if(space == "time"){
 
-    min_d0 <- c()
-    for (i in 1:nrow(modeldomain)){
-      min_d0[i] <- min(abs(difftime(sf::st_drop_geometry(modeldomain)[i,timevar],
-                                    sf::st_drop_geometry(x)[,timevar],
-                                    units=time_unit)))
-    }
+    time_train <- sf::st_drop_geometry(x)[, timevar]
+    time_pred <- sf::st_drop_geometry(modeldomain)[, timevar]
+    dmat <- abs(outer(time_pred, time_train, FUN=function(a,b) as.numeric(difftime(a,b,units=time_unit))))
+    min_d0 <- apply(dmat, 1, min)
 
     sampletoprediction <- data.frame(dist = min_d0,
                                      what = factor("prediction-to-sample"),
@@ -491,8 +469,8 @@ sample2prediction = function(x, modeldomain, space, samplesize, variables, time_
 }
 
 
-# sample to test
-sample2test <- function(x, testdata, space, variables, time_unit, timevar, catVars, algorithm, useMD, islonglat, tcoords){
+# Test to sample distance calculation
+test2sample <- function(x, testdata, space, variables, time_unit, timevar, catVars, algorithm, useMD, islonglat, tcoords){
 
   if(space == "geographical"){
 
@@ -546,12 +524,10 @@ sample2test <- function(x, testdata, space, variables, time_unit, timevar, catVa
                              what = "test-to-sample",
                              dist_type = "feature")
   }else if (space=="time"){
-    min_d0 <- c()
-    for (i in 1:nrow(testdata)){
-      min_d0[i] <- min(abs(difftime(sf::st_drop_geometry(testdata)[i,timevar],
-                                    sf::st_drop_geometry(x)[,timevar],
-                                    units=time_unit)))
-    }
+    time_train <- sf::st_drop_geometry(x)[, timevar]
+    time_test <- sf::st_drop_geometry(testdata)[, timevar]
+    dmat <- abs(outer(time_test, time_train, FUN=function(a,b) as.numeric(difftime(a,b,units=time_unit))))
+    min_d0 <- apply(dmat, 1, min)
 
     dists_test <- data.frame(dist = min_d0,
                              what = factor("test-to-sample"),
@@ -564,8 +540,7 @@ sample2test <- function(x, testdata, space, variables, time_unit, timevar, catVa
 }
 
 
-
-# between folds
+# Calculate distances between folds
 cvdistance <- function(x, cvfolds, space, variables, time_unit, timevar, catVars, algorithm, useMD, islonglat, tcoords){
   
   # Convert cvfold list to vector
@@ -614,18 +589,8 @@ cvdistance <- function(x, cvfolds, space, variables, time_unit, timevar, catVars
                            dist_type = "feature")
 
   }else if(space == "time"){
-    d_cv <- c()
-    d_cv_tmp <- c()
-    for (i in 1:length(cvfolds)){
-      for (k in 1:length(cvfolds[[i]])){
-        d_cv_tmp[k] <- min(abs(difftime(sf::st_drop_geometry(x)[cvfolds[[i]][k],timevar],
-                                        sf::st_drop_geometry(x)[-cvfolds[[i]],timevar],
-                                        units=time_unit)))
-      }
-      
-      d_cv <- c(d_cv,d_cv_tmp)
-    }
-
+    time_values <- sf::st_drop_geometry(x)[, timevar]
+    d_cv <- distclust_time(time_values, clust, time_unit = time_unit)
 
     dists_cv <- data.frame(dist = d_cv,
                            what = factor("CV-distances"),
@@ -637,46 +602,39 @@ cvdistance <- function(x, cvfolds, space, variables, time_unit, timevar, catVars
 }
 
 
+# Sample prediction points from the prediction area
+sampleFromArea <- function(modeldomain, samplesize, space, variables, sampling){
 
-
-
-sampleFromArea <- function(modeldomain, samplesize, space, variables, sampling, catVars){
-
-  # Samples prediction points from the prediction area
+  # Sample points from a Raster
   if(inherits(modeldomain, "Raster")){
     modeldomain <- terra::rast(modeldomain)
   }
 
-  if(space == "geographical")  {
-    if(inherits(modeldomain, "SpatRaster")) {
-        if(samplesize>terra::ncell(modeldomain)){
-          samplesize <- terra::ncell(modeldomain)
-          message(paste0("samplesize for new data shouldn't be larger than number of pixels.
-                  Samplesize was reduced to ",terra::ncell(modeldomain)))
-        }
-        #create mask to sample from:
-        template <- modeldomain[[1]]
-        template <- terra::classify(template, cbind(-Inf, Inf, 1), right=FALSE)
-        # draw samples using terra
-        message(paste0("Sampling ", samplesize, " prediction locations from the modeldomain raster."))
-        predictionloc <- terra::spatSample(template, size = samplesize, method = sampling, as.points = TRUE, na.rm = TRUE, values = FALSE) |> 
-          sf::st_as_sf()
+  if(inherits(modeldomain, "SpatRaster")) {
 
-      }else{
-        # sample prediction locations from sf vector objects
-        message(paste0("Sampling ", samplesize, " prediction locations from the modeldomain vector."))
-        predictionloc <- sf::st_sample(x = modeldomain, size = samplesize, type = sampling) |> 
-          sf::st_set_crs(sf::st_crs(modeldomain))
-      }
+    if(sampling == "Fibonacci") {
+      stop("Fibonacci sampling is only available if the modeldomain is a Polygon.")
+    }
+
+    if(samplesize>terra::ncell(modeldomain)){
+      samplesize <- terra::ncell(modeldomain)
+      message(paste0("samplesize for new data shouldn't be larger than number of pixels.
+              Samplesize was reduced to ",terra::ncell(modeldomain)))
+    }
+    #create mask to sample from:
+    template <- modeldomain[[1]]
+    template <- terra::classify(template, cbind(-Inf, Inf, 1), right=FALSE)
+    # draw samples using terra
+    message(paste0("Sampling ", samplesize, " prediction locations from the modeldomain raster."))
+    predictionloc <- terra::spatSample(template, size = samplesize, method = sampling, as.points = TRUE, na.rm = TRUE, values = FALSE) |> 
+      sf::st_as_sf()
+
+  }else{
+    # Sample points from a Polygon
+    message(paste0("Sampling ", samplesize, " prediction locations from the modeldomain vector."))
+    predictionloc <- sf::st_sample(x = modeldomain, size = samplesize, type = sampling) |> 
+      sf::st_set_crs(sf::st_crs(modeldomain))
   }
-
-  if(space == "feature"){
-
-    message(paste0("Sampling ", samplesize, " prediction locations from the modeldomain raster and extracting values from it."))
-    predictionloc <- terra::spatSample(modeldomain, size = samplesize, method = sampling, as.points = TRUE, na.rm = TRUE, values = TRUE) |> 
-          sf::st_as_sf()
-  }
-
   return(predictionloc)
 
 }
