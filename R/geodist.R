@@ -1,29 +1,28 @@
 #' Calculate euclidean nearest neighbor distances in geographic space or feature space
 #'
-#' @description Calculates nearest neighbor distances in geographic space or feature space between training data as well as between training data and prediction locations.
-#' Optional, the nearest neighbor distances between training data and test data or between training data and CV iterations is computed.
+#' @description Calculates nearest neighbor distances in geographic space or feature space between training data as well as between prediction locations and training data.
+#' Optional, the nearest neighbor distances between test data and training data or between different CV folds is computed.
 #' @param x object of class sf, training data locations
 #' @param modeldomain SpatRaster, stars or sf object defining the prediction area (see Details)
-#' @param space "geographical" or "feature". Should the distance be computed in geographic space or in the normalized multivariate predictor space (see Details)
+#' @param space "geographical", "feature" or "time". Should the distance be computed in geographic space, in the normalized multivariate predictor space or in temporal space? (see Details)
 #' @param cvfolds optional. list or vector. Either a list where each element contains the data points used for testing during the cross validation iteration (i.e. held back data).
 #' Or a vector that contains the ID of the fold for each training point. See e.g. ?createFolds or ?CreateSpacetimeFolds or ?nndm
-#' @param testdata optional. object of class sf: Point data used for independent validation
+#' @param testdata optional. object of class sf: Point data used for independent validation. May already include the predictor values if `space`=feature.
 #' @param preddata optional. object of class sf: Point data indicating the locations within the modeldomain to be used as target prediction points. Useful when the prediction objective is a subset of
-#' locations within the modeldomain rather than the whole area.
+#' locations within the modeldomain rather than the whole area. May already include the predictor values if `space`="feature".
 #' @param samplesize numeric. How many prediction samples should be used?
 #' @param sampling character. How to draw prediction samples? See \link[sf]{st_sample} for modeldomains that are sf objects and \link[terra]{spatSample} for raster objects.
-#' Use sampling = "Fibonacci" for global applications (only possible with sf objects).
+#' Use sampling = "Fibonacci" for global applications (raster objects will be transformed to polygons in this case).
 #' @param variables character vector defining the predictor variables used if space="feature". If not provided all variables included in modeldomain are used.
 #' @param timevar optional. character. Column that indicates the date. Only used if space="time".
 #' @param time_unit optional. Character. Unit for temporal distances See ?difftime.Only used if space="time".
 #' @param algorithm see \code{\link[FNN]{knnx.dist}} and \code{\link[FNN]{knnx.index}}
-#' @param useMD boolean. Only for `space`=feature: shall the Mahalanobis distance be calculated instead of Euclidean?
-#' Only works with numerical variables.
+#' @param useMD boolean. Only for `space`=feature: shall the Mahalanobis distance be calculated instead of Euclidean? Only works with numerical variables.
 #' @return A data.frame containing the distances. Unit of returned geographic distances is meters. attributes contain W statistic between prediction area and either sample data, CV folds or test data. See details.
-#' @details The modeldomain is a sf polygon or a raster that defines the prediction area. The function takes a regular point sample (amount defined by samplesize) from the spatial extent.
-#'     If space = "feature", the argument modeldomain (and if provided then also the testdata and/or preddata) has to include predictors. Predictor values for x, testdata and preddata are optional if modeldomain is a raster.
-#'     If not provided they are extracted from the modeldomain rasterStack. If some predictors are categorical (i.e., of class factor or character), gower distances will be used.
-#'     W statistic describes the match between the distributions. See Linnenbrink et al (2023) for further details.
+#' @details The modeldomain is a sf polygon or a raster that defines the prediction area. The function takes a regular point sample (amount defined by samplesize) from the spatial extent (if no `preddata` are supplied).
+#'     If `space` = "feature", the argument modeldomain has to be a raster and include predictors. The only exception is when the provided training data and preddata already include the predictor values.
+#'     If not provided they are extracted from the modeldomain raster. If some predictors are categorical (i.e., of class factor or character), gower distances will be used.
+#'     W statistic describes the match between the distributions. See Linnenbrink et al (2024) for further details.
 #' @note See Meyer and Pebesma (2022) for an application of this plotting function
 #' @seealso \code{\link{nndm}} \code{\link{knndm}}
 #' @import ggplot2
@@ -610,11 +609,7 @@ sampleFromArea <- function(modeldomain, samplesize, space, variables, sampling){
     modeldomain <- terra::rast(modeldomain)
   }
 
-  if(inherits(modeldomain, "SpatRaster")) {
-
-    if(sampling == "Fibonacci") {
-      stop("Fibonacci sampling is only available if the modeldomain is a Polygon.")
-    }
+  if(inherits(modeldomain, "SpatRaster") && sampling != "Fibonacci") {
 
     if(samplesize>terra::ncell(modeldomain)){
       samplesize <- terra::ncell(modeldomain)
@@ -629,10 +624,21 @@ sampleFromArea <- function(modeldomain, samplesize, space, variables, sampling){
     predictionloc <- terra::spatSample(template, size = samplesize, method = sampling, as.points = TRUE, na.rm = TRUE, values = FALSE) |> 
       sf::st_as_sf()
 
-  }else{
+  } else if(inherits(modeldomain, "SpatRaster") && sampling == "Fibonacci") {
+    message("Converting raster to polygon for Fibonacci sampling")
+    # Use first layer as template
+    raster_template <- modeldomain[[1]]
+    # Convert non-NA cells to polygons
+    template <- sf::st_as_sf(terra::as.polygons(raster_template, na.rm = TRUE))
+    # Sample points from the polygon
+    message(paste0("Sampling ", samplesize, " prediction locations from the modeldomain vector."))
+    predictionloc <- sf::st_sample(template, size = samplesize, type = sampling) |> 
+      sf::st_set_crs(sf::st_crs(modeldomain))
+
+  } else {
     # Sample points from a Polygon
     message(paste0("Sampling ", samplesize, " prediction locations from the modeldomain vector."))
-    predictionloc <- sf::st_sample(x = modeldomain, size = samplesize, type = sampling) |> 
+    predictionloc <- sf::st_sample(modeldomain, size = samplesize, type = sampling) |> 
       sf::st_set_crs(sf::st_crs(modeldomain))
   }
   return(predictionloc)

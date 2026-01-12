@@ -14,6 +14,8 @@
 #' @param tolerance numeric. The allowed deviance from `prop_test`. The higher the tolerance, 
 #' the larger the possibility to obtain train/test splits that yield good approximations of the prediction situation.
 #' By default 0.1.  Make sure that \eqn{prop\_test + tolerance < 1} and \eqn{prop\_test - tolerance > 0}. Only used if `prop_test` is set.
+#' @param nk_length Number of steps. Defines the number of clusters that are compared. Increasing nk_length might lead to a better approximation of
+#' the prediction situation, but also increases computational time. Default = 100.
 #' @param clustering character. Possible values include "hierarchical" and "kmeans". See details.
 #' @param linkf character. Only relevant if clustering = "hierarchical". Link function for agglomerative hierarchical clustering.
 #' Defaults to "ward.D2". Check \code{\link[stats]{hclust}} for other options.
