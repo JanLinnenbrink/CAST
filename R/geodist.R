@@ -70,7 +70,7 @@
 #' plot(dist)
 #'
 #' dist <- geodist(x = splotdata[splotdata$Country != "Chile",],
-#'                 modeldomain = predictors, cvfolds = folds,
+#'                 modeldomain = predictors,
 #'                 testdata = splotdata[splotdata$Country == "Chile",],
 #'                 space = "feature",
 #'                 variables=c("bio_1","bio_12", "elev"))
