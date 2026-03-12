@@ -164,13 +164,19 @@ trainDI <- function(model = NA,
 
   # calculate average mean distance between training data
   is_cv <- !is.null(CVtrain)&!is.null(CVtest)
-  if (!is_cv) {
-    trainDist_min <- .knndistfun(reference=train, k=1, dist_fun = method, distance = TRUE)
-  } else {
-    trainDist_min <- cv_distances(train, CVtrain = CVtrain, CVtest = CVtest, dist_fun=method, time_unit=time_unit)
-  }
 
-  trainDist_avrgmean <- mean(trainDist_min, na.rm = TRUE)
+  # Compute all pairwise distances once; used for normalization and optionally LPD.
+  # This matches the original normalization: mean of average pairwise distances.
+  all_pairs <- .knndistfun(reference=train, k=nrow(train)-1, dist_fun = method, distance = TRUE)
+  trainDist_avrgmean <- mean(all_pairs, na.rm = TRUE)
+
+  if (!is_cv) {
+    # For n>2, all_pairs is an n×(n-1) matrix; first column = 1-NN distances.
+    # For n=2, k=nrow(train)-1=1 causes .knndistfun() to return a plain vector.
+    trainDist_min <- if (is.matrix(all_pairs)) all_pairs[, 1] else all_pairs
+  } else {
+    trainDist_min <- cv_distances(train, CVtrain = CVtrain, CVtest = CVtest, dist_fun=method)
+  }
 
   # Dissimilarity Index of training data -----
   TrainDI <- trainDist_min / trainDist_avrgmean
@@ -184,8 +190,7 @@ trainDI <- function(model = NA,
 
   # calculate trainLPD and avrgLPD according to the CV folds
   if (LPD) {
-      dist_mat <- .knndistfun(reference=train, k=nrow(train)-1, dist_fun = method, distance = TRUE)
-      dist_mat <- dist_mat / trainDist_avrgmean
+      dist_mat <- all_pairs / trainDist_avrgmean
       trainLPD <- as.integer(rowSums(dist_mat < thres, na.rm = TRUE))
       avrgLPD <- round(mean(trainLPD))
   }
