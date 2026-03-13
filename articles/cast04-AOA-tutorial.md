@@ -13,7 +13,7 @@ The model has not been enabled to learn about relationships in these
 environments and predictions for such areas have to be considered highly
 uncertain.
 
-In CAST, we implement the methodology described in [Meyer&Pebesma
+In CAST, we implement the methodology described in [Meyer and Pebesma
 (2021)](https://doi.org/10.1111/2041-210X.13650) to estimate the “area
 of applicability” (AOA) of (spatial) prediction models. The AOA is
 defined as the area where we enabled the model to learn about
@@ -30,10 +30,8 @@ cross-validation.
 This tutorial shows an example of how to estimate the area of
 applicability of spatial prediction models.
 
-For further information see: Meyer, H., & Pebesma, E. (2021). Predicting
-into unknown space? Estimating the area of applicability of spatial
-prediction models. Methods in Ecology and Evolution, 12, 1620– 1633.
-\[<https://doi.org/10.1111/2041-210X.13650>\]
+For further information see [Meyer and Pebesma
+(2021)](https://doi.org/10.1111/2041-210X.13650).
 
 #### Getting started
 
@@ -42,7 +40,6 @@ library(CAST)
 library(caret)
 library(terra)
 library(sf)
-library(viridis)
 library(gridExtra)
 ```
 
@@ -60,7 +57,7 @@ in the CAST package.
 
 ``` r
 predictors <- rast(system.file("extdata","bioclim.tif",package="CAST"))
-plot(predictors,col=viridis(100))
+plot(predictors)
 ```
 
 ![](cast04-AOA-tutorial_files/figure-html/unnamed-chunk-3-1.png)
@@ -110,7 +107,7 @@ response <- generate_random_response (predictors, seed = 10)
     ## [1] "bio2^1 * bio5^1 + bio10^2 - bio13^2 / bio14^2 / bio19^1"
 
 ``` r
-plot(response,col=viridis(100),main="virtual response")
+plot(response,main="virtual response")
 ```
 
 ![](cast04-AOA-tutorial_files/figure-html/unnamed-chunk-5-1.png)
@@ -132,7 +129,7 @@ mask <- st_make_valid(mask)
 set.seed(15)
 samplepoints <- st_as_sf(st_sample(mask,20,"random"))
 
-plot(response,col=viridis(100))
+plot(response)
 plot(samplepoints,col="red",add=T,pch=3)
 ```
 
@@ -313,12 +310,11 @@ is returned in the `parameters` list entry.
 We can plot the DI and LPD as well as predictions within the AOA:
 
 ``` r
-plot(truediff,col=viridis(100),main="true prediction error")
-plot(AOA$DI,col=viridis(100),main="DI")
-plot(AOA$LPD,col=viridis(100),main="LPD")
+plot(truediff,main="true prediction error")
+plot(AOA$DI,main="DI")
+plot(AOA$LPD,main="LPD")
 #mask prediction with AOA:
-plot(mask(prediction,AOA$AOA,maskvalue=0),
-     col=viridis(100),main="Prediction for AOA")
+plot(mask(prediction,AOA$AOA,maskvalue=0),main="Prediction for AOA")
 ```
 
 ![](cast04-AOA-tutorial_files/figure-html/unnamed-chunk-14-1.png)![](cast04-AOA-tutorial_files/figure-html/unnamed-chunk-14-2.png)![](cast04-AOA-tutorial_files/figure-html/unnamed-chunk-14-3.png)![](cast04-AOA-tutorial_files/figure-html/unnamed-chunk-14-4.png)
@@ -334,11 +330,11 @@ the threshold, we regard this area as outside the AOA.
 The example above had randomly distributed training samples. However,
 sampling locations might also be highly clustered in space. In this
 case, the random cross-validation is not meaningful (see e.g. [Meyer et
-al. 2018](https://doi.org/10.1016/j.envsoft.2017.12.001), [Meyer et
-al. 2019](https://doi.org/10.1016/j.ecolmodel.2019.108815), [Valavi et
-al. 2019](https://doi.org/10.1111/2041-210X.13107), [Roberts et
-al. 2018](https://doi.org/10.1111/ecog.02881), [Pohjankukka et
-al. 2017](https://doi.org/10.1080/13658816.2017.1346255), [Brenning
+al., 2018](https://doi.org/10.1016/j.envsoft.2017.12.001); [Meyer et
+al., 2019](https://doi.org/10.1016/j.ecolmodel.2019.108815); [Valavi et
+al., 2019](https://doi.org/10.1111/2041-210X.13107); [Roberts et al.,
+2018](https://doi.org/10.1111/ecog.02881); [Pohjankukka et al.,
+2017](https://doi.org/10.1080/13658816.2017.1346255); [Brenning,
 2012](https://CRAN.R-project.org/package=sperrorest))
 
 A random cross-validation in this case would lead to a apparently high
@@ -359,7 +355,7 @@ data points around each location.
 set.seed(25)
 samplepoints <- clustered_sample(mask,75,15,radius=25000)
 
-plot(response,col=viridis(100))
+plot(response)
 plot(samplepoints,col="red",add=T,pch=3)
 ```
 
@@ -456,12 +452,12 @@ AOA_random <- aoa(predictors, model_random, LPD = FALSE, verbose = FALSE)
 ```
 
 ``` r
-plot(AOA_spatial$DI,col=viridis(100),main="DI")
-plot(AOA_spatial$LPD,col=viridis(100),main="LPD")
+plot(AOA_spatial$DI,main="DI")
+plot(AOA_spatial$LPD,main="LPD")
 #mask prediction with AOA:
-plot(mask(prediction,AOA_spatial$AOA,maskvalue=0), col=viridis(100),main="prediction for AOA (spatial CV error applies)",
+plot(mask(prediction,AOA_spatial$AOA,maskvalue=0),main="prediction for AOA (spatial CV error applies)",
      cex.main=0.75)
-plot(mask(prediction_random,AOA_random$AOA,maskvalue=0), col=viridis(100),main="prediction for AOA (random CV error applies)", cex.main=0.75)
+plot(mask(prediction_random,AOA_random$AOA,maskvalue=0),main="prediction for AOA (random CV error applies)", cex.main=0.75)
 ```
 
 ![](cast04-AOA-tutorial_files/figure-html/unnamed-chunk-20-1.png)![](cast04-AOA-tutorial_files/figure-html/unnamed-chunk-20-2.png)![](cast04-AOA-tutorial_files/figure-html/unnamed-chunk-20-3.png)![](cast04-AOA-tutorial_files/figure-html/unnamed-chunk-20-4.png)
@@ -585,13 +581,13 @@ DI_updated_AOA = AOA_spatial$DI > attr(DI_RMSE_relation, "AOA_threshold")
 LPD_updated_AOA = AOA_spatial$DI > attr(LPD_RMSE_relation, "AOA_threshold")
 
 #mask prediction with AOA:
-plot(mask(DI_expected_RMSE,DI_updated_AOA,maskvalue=0),col=viridis(100),main="DI expected RMSE")
+plot(mask(DI_expected_RMSE,DI_updated_AOA,maskvalue=0),main="DI expected RMSE")
 ```
 
 ![](cast04-AOA-tutorial_files/figure-html/unnamed-chunk-23-3.png)
 
 ``` r
-plot(mask(LPD_expected_RMSE,LPD_updated_AOA,maskvalue=0),col=viridis(100),main="LPD expected RMSE")
+plot(mask(LPD_expected_RMSE,LPD_updated_AOA,maskvalue=0),main="LPD expected RMSE")
 ```
 
 ![](cast04-AOA-tutorial_files/figure-html/unnamed-chunk-23-4.png)
@@ -607,12 +603,12 @@ reference only.
 ### Data and preprocessing
 
 To do so, we will work with the cookfarm dataset, described in
-e.g. [Gasch et al 2015](https://doi.org/10.1016/j.spasta.2015.04.001).
-The dataset included in CAST is a re-structured dataset. Find more
-details also in the vignette “Introduction to CAST”. We will use soil
-moisture (VW) as response variable here. Hence, we’re aiming at making a
-spatial continuous prediction based on limited measurements from data
-loggers.
+e.g. [Gasch et
+al. (2015)](https://doi.org/10.1016/j.spasta.2015.04.001). The dataset
+included in CAST is a re-structured dataset. Find more details also in
+the vignette “Introduction to CAST”. We will use soil moisture (VW) as
+response variable here. Hence, we’re aiming at making a spatial
+continuous prediction based on limited measurements from data loggers.
 
 ``` r
 data(cookfarm)
@@ -714,14 +710,14 @@ AOA should be excluded.
 AOA <- aoa(studyArea, model, LPD = TRUE, verbose = FALSE)
 
 #### Plot results:
-plot(AOA$DI,col=viridis(100),main="DI with sampling locations (red)")
+plot(AOA$DI,main="DI with sampling locations (red)")
 plot(pts,zcol="ID",col="red",add=TRUE)
 
-plot(AOA$LPD,col=viridis(100),main="LPD with sampling locations (red)")
+plot(AOA$LPD,main="LPD with sampling locations (red)")
 plot(pts,zcol="ID",col="red",add=TRUE)
 
 #show only predictions inside the AOA (mask):
-plot(mask(prediction,AOA$AOA,maskvalue=0), col=viridis(100), main="prediction for AOA (LOOCV error applies)", cex.main=0.75)
+plot(mask(prediction,AOA$AOA,maskvalue=0), main="prediction for AOA (LOOCV error applies)", cex.main=0.75)
 ```
 
 ![](cast04-AOA-tutorial_files/figure-html/unnamed-chunk-27-1.png)![](cast04-AOA-tutorial_files/figure-html/unnamed-chunk-27-2.png)![](cast04-AOA-tutorial_files/figure-html/unnamed-chunk-27-3.png)
@@ -740,16 +736,16 @@ plot(mask(prediction,AOA$AOA,maskvalue=0), col=viridis(100), main="prediction fo
 
 ### Further reading
 
-- Meyer, H., & Pebesma, E. (2022): Machine learning-based global maps of
+- Meyer, H., Pebesma, E. (2022): Machine learning-based global maps of
   ecological variables and the challenge of assessing them. Nature
-  Communications. \[<https://doi.org/10.1038/s41467-022-29838-9>\]
+  Communications 13, 2208. <https://doi.org/10.1038/s41467-022-29838-9>.
 
-- Meyer, H., & Pebesma, E. (2021). Predicting into unknown space?
+- Meyer, H., Pebesma, E. (2021). Predicting into unknown space?
   Estimating the area of applicability of spatial prediction models.
   Methods in Ecology and Evolution, 12, 1620– 1633.
-  \[<https://doi.org/10.1111/2041-210X.13650>\]
+  <https://doi.org/10.1111/2041-210X.13650>.
 
 - Tutorial (<https://youtu.be/EyP04zLe9qo>) and Lecture
   (<https://youtu.be/OoNH6Nl-X2s>) recording from OpenGeoHub summer
   school 2020 on the area of applicability. As well as talk at the
-  OpenGeoHub summer school 2022: <https://doi.org/10.5446/59412>
+  OpenGeoHub summer school 2022: <https://doi.org/10.5446/59412>.

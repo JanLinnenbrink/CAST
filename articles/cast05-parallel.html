@@ -20,7 +20,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">CAST</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.0.3</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.1.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -73,7 +73,7 @@ Ludwig</h4>
     
 <p>Working with machine learning methods and spatial data can be
 computationally expensive. Especially for larger scale applications like
-<a href="https://doi.org/10.1111/geb.13635" class="external-link">global maps (Ludwig et. al
+global maps <a href="https://doi.org/10.1111/geb.13635" class="external-link">(Ludwig et al.,
 2024)</a> or high resolution data (e.g. from drones) computation times
 of CAST methods can be quite long. This vignette goes over various
 options for efficient spatial modelling workflows and parallelization
@@ -105,9 +105,12 @@ the warning
 <span>                seed <span class="op">=</span> <span class="fl">1</span>,</span>
 <span>                cores <span class="op">=</span> <span class="fl">4</span><span class="op">)</span></span></code></pre></div>
 <p>Regardless of the system, you can speed up the model training in
-<code>ffs</code>, as <code><a href="https://rdrr.io/pkg/caret/man/train.html" class="external-link">caret::train</a></code> has a <a href="https://topepo.github.io/caret/parallel-processing.html" class="external-link">parallelization
-option</a> that trains models on multiple cores. The code below is
-adapated from <a href="https://topepo.github.io/caret/parallel-processing.html" class="external-link">https://topepo.github.io/caret/parallel-processing</a></p>
+<code>ffs</code>, as <code><a href="https://rdrr.io/pkg/caret/man/train.html" class="external-link">caret::train</a></code> has a parallelization
+option (<a href="https://topepo.github.io/caret/parallel-processing.html" class="external-link">see
+Chapter 9, “Parallel Processing” in Kuhn (2019)</a> for more
+information) that trains models on multiple cores. The code below is
+adapted from <a href="https://topepo.github.io/caret/parallel-processing.html" class="external-link">Kuhn
+(2019), Chapter 9</a></p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://github.com/RevolutionAnalytics/doparallel" class="external-link">doParallel</a></span><span class="op">)</span></span>
 <span></span>
@@ -187,7 +190,7 @@ all the necessary information from the training data and model that the
 <code>aoa</code> function needs to compute the DI for new locations.</p>
 <div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">tdi</span> <span class="op">=</span> <span class="fu"><a href="../reference/trainDI.html">trainDI</a></span><span class="op">(</span><span class="va">model</span>, verbose <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
-<span><span class="fu"><a href="../reference/print.html">print</a></span><span class="op">(</span><span class="va">tdi</span><span class="op">)</span></span></code></pre></div>
+<span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">tdi</span><span class="op">)</span></span></code></pre></div>
 <pre><code><span><span class="co">## DI of 703 observation </span></span>
 <span><span class="co">## Predictors: bio_1 bio_4 bio_5 bio_6 bio_8 bio_9 bio_12 bio_13 bio_14 bio_15 elev </span></span>
 <span><span class="co">## </span></span>

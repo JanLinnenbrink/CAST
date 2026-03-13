@@ -14,6 +14,7 @@ ffs(
   globalval = FALSE,
   withinSE = FALSE,
   minVar = 2,
+  earlyStopping = TRUE,
   trControl = caret::trainControl(),
   tuneLength = 3,
   tuneGrid = NULL,
@@ -61,6 +62,11 @@ ffs(
   Numeric. Number of variables to combine for the first selection. See
   Details.
 
+- earlyStopping:
+
+  Logical. Should the variable selection stop when none of the further
+  variables increases the performance. If FALSE selection is continued.
+
 - trControl:
 
   see [`train`](https://rdrr.io/pkg/caret/man/train.html)
@@ -97,7 +103,9 @@ A list of class train. Beside of the usual train content the object
 contains the vector "selectedvars" and "selectedvars_perf" that give the
 order of the best variables selected as well as their corresponding
 performance (starting from the first two variables). It also contains
-"perf_all" that gives the performance of all model runs.
+"perf_all" that gives the performance of all model runs and
+"best_models_table" that returns the summary of the best performing
+models per number of variables.
 
 ## Details
 
@@ -105,9 +113,11 @@ Models with two predictors are first trained using all possible pairs of
 predictor variables. The best model of these initial models is kept. On
 the basis of this best model the predictor variables are iteratively
 increased and each of the remaining variables is tested for its
-improvement of the currently best model. The process stops if none of
-the remaining variables increases the model performance when added to
-the current best model.
+improvement of the currently best model. If earlyStopping=TRUE
+(default), the process stops if none of the remaining variables
+increases the model performance when added to the current best model.
+Otherwise if earlyStopping==FALSE variables will iteratively be added
+and the model finally leading to the best performance is kept.
 
 The forward feature selection can be run in parallel with forking on
 Linux systems (mclapply). Each fork computes a model, which drastically
@@ -140,12 +150,15 @@ Meyer et al. (2019) for further details.
   (2015): Spatio-temporal interpolation of soil water, temperature, and
   electrical conductivity in 3D+T: the Cook Agronomy Farm data set.
   Spatial Statistics 14: 70-90.
+  [doi:10.1016/j.spasta.2015.04.001](https://doi.org/10.1016/j.spasta.2015.04.001)
+  .
 
 - Meyer, H., Reudenbach, C., Hengl, T., Katurji, M., Nauß, T. (2018):
   Improving performance of spatio-temporal machine learning models using
   forward feature selection and target-oriented validation.
   Environmental Modelling & Software 101: 1-9.
   [doi:10.1016/j.envsoft.2017.12.001](https://doi.org/10.1016/j.envsoft.2017.12.001)
+  .
 
 - Meyer, H., Reudenbach, C., Wöllauer, S., Nauss, T. (2019): Importance
   of spatial predictor variable selection in machine learning
@@ -180,6 +193,17 @@ ffsmodel$selectedvars_perf
 plot(ffsmodel)
 #or only selected variables:
 plot(ffsmodel,plotType="selected")
+} # }
+
+# if you expect that more variables will improve the model,
+# consider running ffs with earlyStopping=FALSE
+
+if (FALSE) { # \dontrun{
+
+ffsmodel <- ffs(splotdata[,6:12], splotdata$Species_richness, ntree = 20,
+  earlyStopping=FALSE)
+plot(ffsmodel)
+ffsmodel$best_models_table
 } # }
 
 # or perform model with target-oriented validation (LLO CV)
@@ -226,6 +250,7 @@ tuneLength=1, trControl=ctrl)
 model
 stopCluster(cl)
 } # }
+
 
 if (FALSE) { # \dontrun{
 ## on linux machines, you can also run the ffs in parallel with forks:

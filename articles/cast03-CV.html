@@ -20,7 +20,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">CAST</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.0.3</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="">1.1.0</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -96,7 +96,7 @@ implemented in <code>CAST</code>. To do so, we will work with two
 datasets of annual average air temperature and fine Particulate Matter
 (PM<math display="inline" xmlns="http://www.w3.org/1998/Math/MathML"><semantics><msub><mi></mi><mn>2.5</mn></msub><annotation encoding="application/x-tex">_{2.5}</annotation></semantics></math>)
 air pollution in continental Spain for 2019, for which several
-predictors have been collected. For more details, check our <a href="https://egusphere.copernicus.org/preprints/2024/egusphere-2024-138/" class="external-link">preprint</a>
+predictors have been collected. For more details, check <a href="https://doi.org/10.5194/gmd-17-6007-2024" class="external-link">Milà et al. (2024)</a>
 where the dataset is described in detail.</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Read data</span></span>
@@ -176,8 +176,8 @@ sampled:</p>
 <span><span class="va">fold5_pm25</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/pkg/caret/man/createDataPartition.html" class="external-link">createFolds</a></span><span class="op">(</span><span class="fl">1</span><span class="op">:</span><span class="fu"><a href="https://rspatial.github.io/terra/reference/dimensions.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">pm25</span><span class="op">)</span>, k<span class="op">=</span><span class="fl">5</span>, returnTrain<span class="op">=</span><span class="cn">FALSE</span><span class="op">)</span></span>
 <span></span>
 <span><span class="co"># Explore geographic predictive conditions</span></span>
-<span><span class="va">predcond_temp</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/geodist.html">geodist</a></span><span class="op">(</span><span class="va">temperature</span>, modeldomain <span class="op">=</span> <span class="va">spain</span>, cvfolds <span class="op">=</span> <span class="va">fold5_temp</span><span class="op">)</span></span>
-<span><span class="va">predcond_pm25</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/geodist.html">geodist</a></span><span class="op">(</span><span class="va">pm25</span>, modeldomain <span class="op">=</span> <span class="va">spain</span>, cvfolds <span class="op">=</span> <span class="va">fold5_pm25</span><span class="op">)</span></span>
+<span><span class="va">predcond_temp</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/geodist.html">geodist</a></span><span class="op">(</span><span class="va">temperature</span>, modeldomain <span class="op">=</span> <span class="va">spain</span>, CVtest <span class="op">=</span> <span class="va">fold5_temp</span><span class="op">)</span></span>
+<span><span class="va">predcond_pm25</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/geodist.html">geodist</a></span><span class="op">(</span><span class="va">pm25</span>, modeldomain <span class="op">=</span> <span class="va">spain</span>, CVtest <span class="op">=</span> <span class="va">fold5_pm25</span><span class="op">)</span></span>
 <span></span>
 <span><span class="co"># Plot density functions</span></span>
 <span><span class="va">p1</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/plot.html">plot</a></span><span class="op">(</span><span class="va">predcond_temp</span><span class="op">)</span> <span class="op">+</span> <span class="fu"><a href="https://ggplot2.tidyverse.org/reference/labs.html" class="external-link">ggtitle</a></span><span class="op">(</span><span class="st">"Temperature"</span><span class="op">)</span></span>
@@ -229,8 +229,8 @@ exclude points whenever training data are clustered, while it will
 generalize to a standard LOO CV when data are random or
 regularly-distributed. All details regarding the algorithm and a
 simulation study evaluating its performance can be found in the article
-<a href="https://doi.org/10.5194/egusphere-2023-1308" class="external-link">here</a> (also
-listed at the end of the vignette).</p>
+<a href="https://doi.org/10.5194/gmd-17-5897-2024" class="external-link">here</a> (also listed
+at the end of the vignette).</p>
 <p>Now, let’s run the NNDM LOO CV algorithm for our two datasets and
 check their output. Here, we use the polygon of Spain as
 <code>modeldomain</code> from which 1,000 are regularly sampled as
@@ -240,7 +240,7 @@ set of raster cell centroids (check argument <code>predpoints</code>).
 We run it first for temperature:</p>
 <div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">temp_nndm</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/nndm.html">nndm</a></span><span class="op">(</span><span class="va">temperature</span>, modeldomain <span class="op">=</span> <span class="va">spain</span>, samplesize <span class="op">=</span> <span class="fl">1000</span><span class="op">)</span></span>
-<span><span class="fu"><a href="../reference/print.html">print</a></span><span class="op">(</span><span class="va">temp_nndm</span><span class="op">)</span></span></code></pre></div>
+<span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">temp_nndm</span><span class="op">)</span></span></code></pre></div>
 <pre><code><span><span class="co">## nndm object</span></span>
 <span><span class="co">## Total number of points: 195</span></span>
 <span><span class="co">## Mean number of training points: 193.91</span></span>
@@ -256,7 +256,7 @@ ECDF during LOO is already lower than the prediction-to-sample ECDF.
 Now, we do the same for air pollution:</p>
 <div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">pm25_nndm</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/nndm.html">nndm</a></span><span class="op">(</span><span class="va">pm25</span>, modeldomain <span class="op">=</span> <span class="va">spain</span>, samplesize <span class="op">=</span> <span class="fl">1000</span><span class="op">)</span></span>
-<span><span class="fu"><a href="../reference/print.html">print</a></span><span class="op">(</span><span class="va">pm25_nndm</span><span class="op">)</span></span></code></pre></div>
+<span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">pm25_nndm</span><span class="op">)</span></span></code></pre></div>
 <pre><code><span><span class="co">## nndm object</span></span>
 <span><span class="co">## Total number of points: 124</span></span>
 <span><span class="co">## Mean number of training points: 118.74</span></span>
@@ -400,16 +400,16 @@ with a spatial structure for clustered training samples while it will
 generalize to a standard random k-fold CV whenever the training data are
 random or regularly-distributed.</p>
 <p>If you want to learn all the finer details of kNNDM and check our
-simulation study evaluating its performance, <a href="https://doi.org/10.5194/egusphere-2023-1308" class="external-link">here</a> is the link
-to the document (also listed at the end of the vignette). Now let’s
-apply kNNDM to our data! First, for temperature with the default
-clustering algorithm:</p>
+simulation study evaluating its performance, <a href="https://doi.org/10.5194/gmd-17-5897-2024" class="external-link">here</a> is the link to
+the document (also listed at the end of the vignette). Now let’s apply
+kNNDM to our data! First, for temperature with the default clustering
+algorithm:</p>
 <div class="sourceCode" id="cb13"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">temp_knndm</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/knndm.html">knndm</a></span><span class="op">(</span><span class="va">temperature</span>, k <span class="op">=</span> <span class="fl">5</span>, modeldomain <span class="op">=</span> <span class="va">spain</span>, samplesize <span class="op">=</span> <span class="fl">1000</span>, </span>
 <span>                   clustering <span class="op">=</span> <span class="st">"hierarchical"</span>, linkf <span class="op">=</span> <span class="st">"ward.D2"</span><span class="op">)</span></span>
-<span><span class="fu"><a href="../reference/print.html">print</a></span><span class="op">(</span><span class="va">temp_knndm</span><span class="op">)</span></span></code></pre></div>
+<span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">temp_knndm</span><span class="op">)</span></span></code></pre></div>
 <pre><code><span><span class="co">## knndm object</span></span>
-<span><span class="co">## Space: geographical</span></span>
+<span><span class="co">## Space: </span></span>
 <span><span class="co">## Clustering algorithm: hierarchical</span></span>
 <span><span class="co">## Intermediate clusters (q): random CV</span></span>
 <span><span class="co">## W statistic: 9384.0966</span></span>
@@ -425,9 +425,9 @@ dataset:</p>
 <div class="sourceCode" id="cb16"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">pm25_knndm</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/knndm.html">knndm</a></span><span class="op">(</span><span class="va">pm25</span>, k <span class="op">=</span> <span class="fl">5</span>, modeldomain <span class="op">=</span> <span class="va">spain</span>, samplesize <span class="op">=</span> <span class="fl">1000</span>, </span>
 <span>                    clustering <span class="op">=</span> <span class="st">"hierarchical"</span>, linkf <span class="op">=</span> <span class="st">"ward.D2"</span><span class="op">)</span></span>
-<span><span class="fu"><a href="../reference/print.html">print</a></span><span class="op">(</span><span class="va">pm25_knndm</span><span class="op">)</span></span></code></pre></div>
+<span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">pm25_knndm</span><span class="op">)</span></span></code></pre></div>
 <pre><code><span><span class="co">## knndm object</span></span>
-<span><span class="co">## Space: geographical</span></span>
+<span><span class="co">## Space: </span></span>
 <span><span class="co">## Clustering algorithm: hierarchical</span></span>
 <span><span class="co">## Intermediate clusters (q): 46</span></span>
 <span><span class="co">## W statistic: 4919.5574</span></span>
@@ -450,9 +450,9 @@ dataset:</p>
 <div class="sourceCode" id="cb19"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">pm25_knndm_v2</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/knndm.html">knndm</a></span><span class="op">(</span><span class="va">pm25</span>, k <span class="op">=</span> <span class="fl">5</span>, modeldomain <span class="op">=</span> <span class="va">spain</span>, samplesize <span class="op">=</span> <span class="fl">1000</span>, </span>
 <span>                       clustering <span class="op">=</span> <span class="st">"kmeans"</span><span class="op">)</span></span>
-<span><span class="fu"><a href="../reference/print.html">print</a></span><span class="op">(</span><span class="va">pm25_knndm_v2</span><span class="op">)</span></span></code></pre></div>
+<span><span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">pm25_knndm_v2</span><span class="op">)</span></span></code></pre></div>
 <pre><code><span><span class="co">## knndm object</span></span>
-<span><span class="co">## Space: geographical</span></span>
+<span><span class="co">## Space: </span></span>
 <span><span class="co">## Clustering algorithm: kmeans</span></span>
 <span><span class="co">## Intermediate clusters (q): 35</span></span>
 <span><span class="co">## W statistic: 5022.7072</span></span>
@@ -572,24 +572,22 @@ account, the estimated performance is lower.</p>
 transferred into the feature space with just a few tweaks. In the
 current version of <code>CAST</code>, we have implemented feature space
 experimental versions of <code><a href="../reference/nndm.html">CAST::nndm</a></code> and
-<code><a href="../reference/knndm.html">CAST::knndm</a></code> (see argument <code>space= 'feature'</code>)
-and we are running validation analyses to verify their performance in a
-variety of settings. Stay tuned for a future version of the vignette for
-an overview of feature space NNDM CV methods and how to apply them to
-your datasets!</p>
+<code><a href="../reference/knndm.html">CAST::knndm</a></code> (see argument
+<code>dist_space= 'feature'</code>) and we are running validation
+analyses to verify their performance in a variety of settings. Stay
+tuned for a future version of the vignette for an overview of feature
+space NNDM CV methods and how to apply them to your datasets!</p>
 </div>
 <div class="section level2">
 <h2 id="further-reading">Further reading<a class="anchor" aria-label="anchor" href="#further-reading"></a>
 </h2>
 <ul>
-<li>Milà, C., Mateu, J., Pebesma, E., Meyer, H. (2022): Nearest
+<li><p>Milà, C., Mateu, J., Pebesma, E., Meyer, H. (2022): Nearest
 Neighbour Distance Matching Leave-One-Out Cross-Validation for map
-validation. Methods in Ecology and Evolution 00, 1– 13. <a href="https://doi.org/10.1111/2041-210X.13851" class="external-link uri">https://doi.org/10.1111/2041-210X.13851</a>
-</li>
-<li>Linnenbrink, J., Milà, C., Ludwig, M., and Meyer, H.: kNNDM: k-fold
-Nearest Neighbour Distance Matching Cross-Validation for map accuracy
-estimation, EGUsphere [preprint], <a href="https://doi.org/10.5194/egusphere-2023-1308" class="external-link uri">https://doi.org/10.5194/egusphere-2023-1308</a>
-</li>
+validation. Methods in Ecology and Evolution 00, 1– 13. <a href="https://doi.org/10.1111/2041-210X.13851" class="external-link uri">https://doi.org/10.1111/2041-210X.13851</a>.</p></li>
+<li><p>Linnenbrink, J., Milà, C., Ludwig, M., Meyer, H. (2024): kNNDM
+CV: k-fold Nearest Neighbour Distance Matching Cross-Validation for map
+accuracy estimation. Geosci Model Dev., 17, 5897–5912. <a href="https://doi.org/10.5194/gmd-17-5897-2024" class="external-link uri">https://doi.org/10.5194/gmd-17-5897-2024</a>.</p></li>
 </ul>
 </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

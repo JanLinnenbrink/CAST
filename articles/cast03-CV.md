@@ -29,9 +29,9 @@ The objective of this vignette is to showcase the CV methods implemented
 in `CAST`. To do so, we will work with two datasets of annual average
 air temperature and fine Particulate Matter (PM$_{2.5}$) air pollution
 in continental Spain for 2019, for which several predictors have been
-collected. For more details, check our
-[preprint](https://egusphere.copernicus.org/preprints/2024/egusphere-2024-138/)
-where the dataset is described in detail.
+collected. For more details, check [Milà et
+al. (2024)](https://doi.org/10.5194/gmd-17-6007-2024) where the dataset
+is described in detail.
 
 ``` r
 # Read data
@@ -118,8 +118,8 @@ fold5_temp <- createFolds(1:nrow(temperature), k=5, returnTrain=FALSE)
 fold5_pm25 <- createFolds(1:nrow(pm25), k=5, returnTrain=FALSE)
 
 # Explore geographic predictive conditions
-predcond_temp <- geodist(temperature, modeldomain = spain, cvfolds = fold5_temp)
-predcond_pm25 <- geodist(pm25, modeldomain = spain, cvfolds = fold5_pm25)
+predcond_temp <- geodist(temperature, modeldomain = spain, CVtest = fold5_temp)
+predcond_pm25 <- geodist(pm25, modeldomain = spain, CVtest = fold5_pm25)
 
 # Plot density functions
 p1 <- plot(predcond_temp) + ggtitle("Temperature")
@@ -175,8 +175,8 @@ exclude points whenever training data are clustered, while it will
 generalize to a standard LOO CV when data are random or
 regularly-distributed. All details regarding the algorithm and a
 simulation study evaluating its performance can be found in the article
-[here](https://doi.org/10.5194/egusphere-2023-1308) (also listed at the
-end of the vignette).
+[here](https://doi.org/10.5194/gmd-17-5897-2024) (also listed at the end
+of the vignette).
 
 Now, let’s run the NNDM LOO CV algorithm for our two datasets and check
 their output. Here, we use the polygon of Spain as `modeldomain` from
@@ -333,7 +333,7 @@ regularly-distributed.
 
 If you want to learn all the finer details of kNNDM and check our
 simulation study evaluating its performance,
-[here](https://doi.org/10.5194/egusphere-2023-1308) is the link to the
+[here](https://doi.org/10.5194/gmd-17-5897-2024) is the link to the
 document (also listed at the end of the vignette). Now let’s apply kNNDM
 to our data! First, for temperature with the default clustering
 algorithm:
@@ -345,7 +345,7 @@ print(temp_knndm)
 ```
 
     ## knndm object
-    ## Space: geographical
+    ## Space: 
     ## Clustering algorithm: hierarchical
     ## Intermediate clusters (q): random CV
     ## W statistic: 9384.0966
@@ -369,7 +369,7 @@ print(pm25_knndm)
 ```
 
     ## knndm object
-    ## Space: geographical
+    ## Space: 
     ## Clustering algorithm: hierarchical
     ## Intermediate clusters (q): 46
     ## W statistic: 4919.5574
@@ -399,7 +399,7 @@ print(pm25_knndm_v2)
 ```
 
     ## knndm object
-    ## Space: geographical
+    ## Space: 
     ## Clustering algorithm: kmeans
     ## Intermediate clusters (q): 35
     ## W statistic: 5022.7072
@@ -492,18 +492,19 @@ current version of `CAST`, we have implemented feature space
 experimental versions of
 [`CAST::nndm`](https://hannameyer.github.io/CAST/reference/nndm.md) and
 [`CAST::knndm`](https://hannameyer.github.io/CAST/reference/knndm.md)
-(see argument `space= 'feature'`) and we are running validation analyses
-to verify their performance in a variety of settings. Stay tuned for a
-future version of the vignette for an overview of feature space NNDM CV
-methods and how to apply them to your datasets!
+(see argument `dist_space= 'feature'`) and we are running validation
+analyses to verify their performance in a variety of settings. Stay
+tuned for a future version of the vignette for an overview of feature
+space NNDM CV methods and how to apply them to your datasets!
 
 ## Further reading
 
 - Milà, C., Mateu, J., Pebesma, E., Meyer, H. (2022): Nearest Neighbour
   Distance Matching Leave-One-Out Cross-Validation for map validation.
   Methods in Ecology and Evolution 00, 1– 13.
-  <https://doi.org/10.1111/2041-210X.13851>
-- Linnenbrink, J., Milà, C., Ludwig, M., and Meyer, H.: kNNDM: k-fold
-  Nearest Neighbour Distance Matching Cross-Validation for map accuracy
-  estimation, EGUsphere \[preprint\],
-  <https://doi.org/10.5194/egusphere-2023-1308>
+  <https://doi.org/10.1111/2041-210X.13851>.
+
+- Linnenbrink, J., Milà, C., Ludwig, M., Meyer, H. (2024): kNNDM CV:
+  k-fold Nearest Neighbour Distance Matching Cross-Validation for map
+  accuracy estimation. Geosci Model Dev., 17, 5897–5912.
+  <https://doi.org/10.5194/gmd-17-5897-2024>.

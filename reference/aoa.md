@@ -14,9 +14,22 @@ number of similar training data points up to the DI threshold.
 ## Usage
 
 ``` r
+aoa(newdata, model = NA, ...)
+
+# S3 method for class 'stars'
+aoa(newdata, model = NA, ...)
+
+# S3 method for class 'Raster'
+aoa(newdata, model = NA, ...)
+
+# S3 method for class 'SpatRaster'
+aoa(newdata, model = NA, ...)
+
+# S3 method for class 'data.frame'
 aoa(
   newdata,
   model = NA,
+  ...,
   trainDI = NA,
   train = NULL,
   weight = NA,
@@ -50,6 +63,10 @@ aoa(
   examples for the case that no model is available or for models trained
   via e.g. mlr3.
 
+- ...:
+
+  ignored
+
 - trainDI:
 
   A trainDI object. Optional if
@@ -74,10 +91,11 @@ aoa(
 
 - CVtest:
 
-  list or vector. Either a list where each element contains the data
-  points used for testing during the cross validation iteration (i.e.
-  held back data). Or a vector that contains the ID of the fold for each
-  training point. Only required if no model is given.
+  list or vector. Either a list with the length of the number of
+  cross-validation folds where each element contains the row indices of
+  the data points used for testing during the cross validation iteration
+  (i.e. held back data). Or a vector that contains the ID of the fold
+  for each training point. Only required if no model is given.
 
 - CVtrain:
 
@@ -207,11 +225,10 @@ the area of applicability of spatial prediction models. Methods in
 Ecology and Evolution 12: 1620-1633.
 [doi:10.1111/2041-210X.13650](https://doi.org/10.1111/2041-210X.13650)
 
-Schumacher, F., Knoth, C., Ludwig, M., Meyer, H. (2024): Estimation of
+Schumacher, F., Knoth, C., Ludwig, M., Meyer, H. (2025): Estimation of
 local training data point densities to support the assessment of spatial
-prediction uncertainty. EGUsphere.
-[doi:10.5194/egusphere-2024-2730](https://doi.org/10.5194/egusphere-2024-2730)
-.
+prediction uncertainty. Geosci. Model Dev., 18, 10185–10202.
+[doi:10.5194/gmd-18-10185-2025](https://doi.org/10.5194/gmd-18-10185-2025)
 
 ## See also
 
@@ -230,7 +247,6 @@ if (FALSE) { # \dontrun{
 library(sf)
 library(terra)
 library(caret)
-library(viridis)
 
 # prepare sample data:
 data(cookfarm)

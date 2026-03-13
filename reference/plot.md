@@ -38,7 +38,7 @@ plot(x, type = "strict", stat = "ecdf", ...)
 plot(
   x,
   plotType = "all",
-  palette = rainbow,
+  palette = hcl.colors,
   reverse = FALSE,
   marker = "black",
   size = 1.5,
@@ -91,7 +91,7 @@ plot(x, ...)
 
 - palette:
 
-  A color palette
+  A color palette function
 
 - reverse:
 
@@ -135,7 +135,7 @@ Carles Milà
 ``` r
 if (FALSE) { # \dontrun{
 data(splotdata)
-splotdata <- st_drop_geometry(splotdata)
+splotdata <- sf::st_drop_geometry(splotdata)
 ffsmodel <- ffs(splotdata[,6:16], splotdata$Species_richness, ntree = 10)
 plot(ffsmodel)
 #plot performance of selected variables only:

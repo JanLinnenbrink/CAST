@@ -22,18 +22,21 @@ is described in detail in Meyer et al. (2024).
 ## References
 
 - Meyer, H., Ludwig, L., Milà, C., Linnenbrink, J., Schumacher, F.
-  (2024): The CAST package for training and assessment of spatial
-  prediction models in R. arXiv,
-  https://doi.org/10.48550/arXiv.2404.06978.
+  (2026): The CAST package for training and assessment of spatial
+  prediction models in R. In: Rocchini, D. (eds) R Coding for Ecology.
+  Use R!. Springer, Cham.
 
-- Linnenbrink, J., Milà, C., Ludwig, M., and Meyer, H.: kNNDM: k-fold
-  Nearest Neighbour Distance Matching Cross-Validation for map accuracy
-  estimation, EGUsphere \[preprint\],
-  https://doi.org/10.5194/egusphere-2023-1308, 2023.
+- Schumacher, F., Knoth, C., Ludwig, M., Meyer, H. (2025): Estimation of
+  local training data point densities to support the assessment of
+  spatial prediction uncertainty. Geosci. Model Dev., 18, 10185–10202.
+
+- Linnenbrink, J., Milà, C., Ludwig, M., and Meyer, H. (2024): kNNDM:
+  k-fold Nearest Neighbour Distance Matching Cross-Validation for map
+  accuracy estimation, Geosci. Model Dev., 17, 5897–5912.
 
 - Milà, C., Mateu, J., Pebesma, E., Meyer, H. (2022): Nearest Neighbour
   Distance Matching Leave-One-Out Cross-Validation for map validation.
-  Methods in Ecology and Evolution 00, 1– 13.
+  Methods in Ecology and Evolution 13, 1304– 1316.
 
 - Meyer, H., Pebesma, E. (2022): Machine learning-based global maps of
   ecological variables and the challenge of assessing them. Nature
